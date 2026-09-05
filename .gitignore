@@ -1,0 +1,66 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Testing / build
+/coverage
+/.next/
+/out/
+/build
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Production
+.vercel
+
+# Environment variables
+.env*.local
+
+# All SQLite databases & WAL logs (schema is in schema.sql & egdesk.schema.ts)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+cadon_bom.db
+cadon_bom.backup.db
+storage/*.db
+storage/*.db-journal
+storage/*.db-wal
+storage/*.db-shm
+storage/*.sqlite
+
+# Local CAD files & big binaries in storage (Physical files excluded from git)
+storage/*
+!storage/files/
+!storage/derived/
+!storage/templates/
+!storage/exports/
+!storage/temp/
+storage/files/*
+!storage/files/.gitkeep
+storage/derived/*
+!storage/derived/.gitkeep
+storage/templates/*
+!storage/templates/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+storage/temp/*
+!storage/temp/.gitkeep
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.pytest_cache/
+
+# Development & Scratch
+scratch/
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db

@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+}
+
+/* ==========================================================================
+   Zero-Latency Instant Row Highlight (즉시 반응형 하이라이트)
+   - 지연 시간 0ms (transition-delay: 0s)
+   - 전환 시간 0ms (transition: none): 엑셀/스프레드시트처럼 커서가 닿는 즉시 전환
+   - 마우스가 다음 행으로 넘어갈 때 딜레이/잔상 없이 즉각 반응
+   ========================================================================== */
+
+.dwell-row-hover {
+  transition: none !important;
+}
+
+.dwell-row-hover:hover {
+  background-color: #93c5fd !important; /* 50% 더 선명한 블루 하이라이트 */
+}
+
+.dwell-row-hover.dwell-row-excluded:hover {
+  background-color: #e2e8f0 !important; /* slate-200 */
+  opacity: 0.9 !important;
+}
+
+/* 행 번호 셀 좌측 인디케이터 바 및 텍스트 즉시 강조 */
+.dwell-row-hover .dwell-indicator {
+  transition: none !important;
+}
+
+.dwell-row-hover:hover .dwell-indicator {
+  border-left-color: #1d4ed8 !important; /* blue-700 선명한 좌측 바 */
+  color: #1e40af !important; /* blue-800 텍스트 */
+}
+
+/* 다크 모드 테이블용 (CadViewer BOM 목록 등) */
+.dwell-row-dark {
+  transition: background-color 220ms ease, opacity 220ms ease;
+  transition-delay: 0s;
+}
+
+.dwell-row-dark:hover {
+  transition-delay: 500ms;
+  background-color: rgba(30, 58, 138, 0.55) !important; /* blue-900/55 */
+}
+

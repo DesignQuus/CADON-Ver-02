@@ -1,0 +1,2304 @@
+'use client';
+
+import React, { useEffect, useState, use, useRef, useMemo } from 'react';
+import Link from 'next/link';
+import {
+  FileText, Upload, Play, CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft,
+  Layers, Database, FileSpreadsheet, RefreshCw, Lock, Sparkles, Building2,
+  Folder, Calendar, Check, X, ShieldAlert, ArrowDown, Eye, Download, Info, Trash2,
+  Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins
+} from 'lucide-react';
+import CadViewer from '@/components/CadViewer';
+import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
+
+export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'cad' | 'structure' | 'approval' | 'quote' | 'excel'>('cad');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [selectedNormItem, setSelectedNormItem] = useState<any>(null);
+  const [manualPriceModal, setManualPriceModal] = useState<any>(null);
+  const [manualPriceInput, setManualPriceInput] = useState('');
+  const [manualPriceReason, setManualPriceReason] = useState('');
+  const [manualPriceHistory, setManualPriceHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [applyScope, setApplyScope] = useState<'SINGLE' | 'ALL_SAME'>('SINGLE');
+  const [autoIncludeInQuote, setAutoIncludeInQuote] = useState(true);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [analyzingFileId, setAnalyzingFileId] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<any>(null);
+  const [externalFocusIdx, setExternalFocusIdx] = useState<number | null>(null);
+
+  // 💎 Inline Direct Price Edit States
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineEditValue, setInlineEditValue] = useState<string>('');
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+  const isSavingInlineRef = useRef(false);
+  const isCancelledRef = useRef(false);
+
+  // 💎 Quote Checkbox Header Pull-down Menu State
+  const [quoteDropdownOpen, setQuoteDropdownOpen] = useState(false);
+  const quoteDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (quoteDropdownRef.current && !quoteDropdownRef.current.contains(event.target as Node)) {
+        setQuoteDropdownOpen(false);
+      }
+    }
+    if (quoteDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [quoteDropdownOpen]);
+
+  const handleNavigateToCadDrawing = (d: any) => {
+    const allDrawings = data?.drawings || [];
+    const idx = allDrawings.findIndex(
+      (item: any) => item.id === d.id || item.drawing_no_raw === d.drawing_no_raw
+    );
+    if (idx >= 0) {
+      setExternalFocusIdx(idx);
+    }
+    setActiveTab('cad');
+  };
+
+  const fetchData = async () => {
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}`);
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+        if (json.normalizedItems?.length > 0 && !selectedNormItem) {
+          setSelectedNormItem(json.normalizedItems[0]);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [id]);
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Unified File Upload & Automatic Pipeline Trigger (PROMPT 03, 18, 18-R1, 18-R2)
+  const handleProcessFile = async (file: File) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setUploading(true);
+    setAnalyzing(true);
+    try {
+      // 1. Upload File
+      const uploadRes = await fetch(`/api/quotation-cases/${id}/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const uploadJson = await uploadRes.json();
+      if (!uploadRes.ok) {
+        throw new Error(uploadJson.error || '파일 업로드에 실패했습니다.');
+      }
+
+      // 2. Automatically Trigger CAD & BOM Analysis Pipeline
+      const analyzeRes = await fetch(`/api/quotation-cases/${id}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: uploadJson.file.id })
+      });
+      const analyzeJson = await analyzeRes.json();
+      if (!analyzeRes.ok) {
+        throw new Error(analyzeJson.error || 'CAD 도면 자동 분석 중 오류가 발생했습니다.');
+      }
+
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || '처리 실패');
+    } finally {
+      setUploading(false);
+      setAnalyzing(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    await handleProcessFile(e.target.files[0]);
+  };
+
+  // 2. Start Analysis Manual Trigger (PROMPT 18-R1 / 18-R2)
+  const handleStartAnalysis = async (targetFileId?: any) => {
+    const rawFiles = (data?.files || []).filter((f: any) => f.file_role !== 'VECTOR_SVG' && f.file_type !== 'SVG' && !f.original_file_name.endsWith('.svg'));
+    const fileIdToUse = typeof targetFileId === 'string'
+      ? targetFileId
+      : (selectedFileId || data?.latestParseRun?.source_file_id || (rawFiles && rawFiles[0]?.id));
+    setAnalyzing(true);
+    setAnalyzingFileId(fileIdToUse);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: fileIdToUse })
+      });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || '분석 실패');
+      }
+    } finally {
+      setAnalyzing(false);
+      setAnalyzingFileId(null);
+    }
+  };
+
+  // Delete Drawing File (Optimized Instant Deletion)
+  const handleDeleteFile = async (fileId: string, fileName: string) => {
+    if (!confirm(`정말 도면 파일 '${fileName}' 및 연관 변환 데이터를 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    // 1. Instant Optimistic UI Clear (< 0.01s)
+    setData((prev: any) => {
+      if (!prev) return prev;
+      const remainingFiles = (prev.files || []).filter((f: any) => f.id !== fileId && f.derived_from_file_id !== fileId);
+      if (remainingFiles.length === 0) {
+        return {
+          ...prev,
+          files: [],
+          drawings: [],
+          cadObjects: [],
+          bomAreas: [],
+          rawBomItems: [],
+          flattenedBomItems: [],
+          normalizedItems: [],
+          finalBomItems: [],
+          case: { ...prev.case, status: 'REGISTERED', quote_readiness: 'PENDING_BOM' }
+        };
+      }
+      return { ...prev, files: remainingFiles };
+    });
+
+    if (selectedFileId === fileId) {
+      setSelectedFileId(null);
+    }
+
+    // 2. Perform background delete request
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/files/${fileId}`, {
+        method: 'DELETE'
+      });
+      const resJson = await res.json();
+      if (!res.ok) {
+        alert(resJson.error || '파일 삭제 실패');
+      }
+      await fetchData();
+    } catch (err: any) {
+      alert('삭제 중 오류: ' + err.message);
+      await fetchData();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 3. Approve Item (PROMPT 13)
+  const handleApproveItem = async (
+    normalizedItemId: string,
+    decisionType: string,
+    master: any = null,
+    reason: string = ''
+  ) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/approve-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          normalizedItemId,
+          decisionType,
+          selectedMasterId: master?.master_id || master?.id || null,
+          selectedMasterCode: master?.master_code || null,
+          finalName: master?.standard_name || selectedNormItem.normalized_name,
+          finalSpec: master?.specification || selectedNormItem.spec_candidate,
+          finalMaterial: master?.material || selectedNormItem.material_candidate,
+          finalQuantity: selectedNormItem.quantity,
+          finalUnit: selectedNormItem.unit,
+          decisionReason: reason || `${decisionType} 사용자 승인`
+        })
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 4. Bulk Approve (PROMPT 13)
+  const handleBulkApprove = async () => {
+    if (!confirm('1순위 추천 마스터와 일치하는 모든 미승인 품목을 일괄 승인하시겠습니까?')) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/bulk-approve`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 5. Create Quote (PROMPT 14)
+  const handleCreateQuote = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/create-quote`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchData();
+        setActiveTab('quote');
+      } else {
+        const err = await res.json();
+        alert(err.error || '견적서 생성 실패');
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 5-2. Auto-Approve & Create Quote in One-Click (BOM 견적 즉시 산출)
+  const handleAutoApproveAndCreateQuote = async () => {
+    setActionLoading(true);
+    try {
+      // 1. Bulk approve AI 1st recommended master items
+      await fetch(`/api/quotation-cases/${id}/bulk-approve`, {
+        method: 'POST'
+      });
+      // 2. Create quote with approved items
+      const res = await fetch(`/api/quotation-cases/${id}/create-quote`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchData();
+        setActiveTab('quote');
+      } else {
+        const err = await res.json();
+        alert(err.error || '견적서 생성 실패');
+      }
+    } catch (err: any) {
+      alert('견적서 자동 산출 중 오류: ' + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 5-3. Save Inline Unit Price Directly (원클릭 직접 단가 입력 & 즉시 자동 저장)
+  const handleSaveInlinePrice = async (itemId: string, priceValue: string, autoAdvance: boolean = false) => {
+    if (isSavingInlineRef.current) return;
+    const cleanStr = String(priceValue || '').replace(/[^0-9]/g, '');
+    if (cleanStr === '') {
+      setInlineEditId(null);
+      return;
+    }
+    const numPrice = Number(cleanStr);
+    if (isNaN(numPrice) || numPrice < 0) {
+      setInlineEditId(null);
+      return;
+    }
+
+    // If unchanged and not advancing, just close
+    const currentItem = data?.quoteItems?.find((q: any) => q.id === itemId);
+    if (currentItem && currentItem.unit_price === numPrice && !autoAdvance) {
+      setInlineEditId(null);
+      return;
+    }
+
+    isSavingInlineRef.current = true;
+    setSavingPriceId(itemId);
+
+    // Auto-advance: find next unregistered item if user pressed Enter/Tab
+    let nextUnregisteredId: string | null = null;
+    if (autoAdvance && data?.quoteItems) {
+      const currentIdx = data.quoteItems.findIndex((q: any) => q.id === itemId);
+      if (currentIdx >= 0) {
+        const nextItem = data.quoteItems.slice(currentIdx + 1).find((q: any) => !q.unit_price || q.unit_price <= 0);
+        if (nextItem) {
+          nextUnregisteredId = nextItem.id;
+        }
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/quote-items/${itemId}/price`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          unitPrice: numPrice,
+          remark: '직접 단가 입력',
+          isIncluded: numPrice > 0
+        })
+      });
+      const resJson = await res.json();
+      if (res.ok && resJson.success) {
+        // Optimistic UI Update (0ms instant response)
+        setData((prev: any) => {
+          if (!prev) return prev;
+          const updatedItems = (prev.quoteItems || []).map((item: any) => {
+            if (item.id === itemId) {
+              return {
+                ...item,
+                unit_price: numPrice,
+                amount: Math.round(item.quantity * numPrice),
+                price_source: 'MANUAL_PRICE',
+                price_status: 'READY',
+                is_included: numPrice > 0 ? 1 : item.is_included
+              };
+            }
+            return item;
+          });
+          return {
+            ...prev,
+            quoteItems: updatedItems,
+            latestQuote: prev.latestQuote ? {
+              ...prev.latestQuote,
+              subtotal: resJson.subtotal,
+              tax_amount: resJson.taxAmount,
+              total_amount: resJson.totalAmount
+            } : prev.latestQuote
+          };
+        });
+
+        if (nextUnregisteredId) {
+          setInlineEditId(nextUnregisteredId);
+          setInlineEditValue('');
+        } else {
+          setInlineEditId(null);
+          setInlineEditValue('');
+        }
+
+        fetchData();
+      } else {
+        alert(resJson.error || '단가 저장에 실패했습니다.');
+      }
+    } catch (err: any) {
+      alert('통신 오류: ' + err.message);
+    } finally {
+      setSavingPriceId(null);
+      setTimeout(() => {
+        isSavingInlineRef.current = false;
+      }, 150);
+    }
+  };
+
+  // 6. Manual Price Handlers (방안 A: 수기 단가 추천 및 자동 누적 풀)
+  const handleOpenManualPriceModal = async (item: any) => {
+    setManualPriceModal(item);
+    setManualPriceInput(item.unit_price > 0 ? Number(item.unit_price).toLocaleString() : '');
+    setManualPriceReason(item.remark || '');
+    setSelectedHistoryId(null);
+    setApplyScope('SINGLE'); // Default to SINGLE (Safe mode: only this 1 item)
+    setAutoIncludeInQuote(true);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/manual-prices?name=${encodeURIComponent(item.item_name)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const list = json.list || [];
+        setManualPriceHistory(list);
+        if (item.unit_price > 0) {
+          const matched = list.find((h: any) => h.unit_price === item.unit_price);
+          if (matched) setSelectedHistoryId(matched.id);
+        }
+      } else {
+        setManualPriceHistory([]);
+      }
+    } catch {
+      setManualPriceHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleDirectApplyPrice = async (numPrice: number, reason: string) => {
+    if (!manualPriceModal || actionLoading) return;
+    if (isNaN(numPrice) || numPrice <= 0) return;
+
+    const currentModal = manualPriceModal;
+    const applyToSame = applyScope === 'ALL_SAME';
+    const willInclude = autoIncludeInQuote && numPrice > 0;
+    setActionLoading(true);
+
+    // Close modal immediately for smooth response
+    setManualPriceModal(null);
+    setManualPriceInput('');
+    setManualPriceReason('');
+    setManualPriceHistory([]);
+    setSelectedHistoryId(null);
+
+    // Optimistic UI Update (0ms instant response)
+    setData((prev: any) => {
+      if (!prev || !prev.quoteItems) return prev;
+      const updatedItems = prev.quoteItems.map((item: any) => {
+        const isTarget = item.id === currentModal.id || (applyToSame && item.item_name === currentModal.item_name);
+        if (isTarget) {
+          const amt = Math.round(item.quantity * numPrice);
+          return {
+            ...item,
+            unit_price: numPrice,
+            amount: amt,
+            price_source: 'MANUAL_PRICE',
+            price_status: 'READY',
+            is_included: willInclude ? 1 : (autoIncludeInQuote ? item.is_included : 0),
+            remark: reason || 'Manual Price 적용'
+          };
+        }
+        return item;
+      });
+
+      const activeSubtotal = updatedItems
+        .filter((qi: any) => qi.is_included === 1)
+        .reduce((sum: number, qi: any) => sum + (Number(qi.amount) || 0), 0);
+      const taxRate = prev.quotes?.[0]?.tax_rate ?? 0.10;
+      const taxAmount = Math.round(activeSubtotal * taxRate);
+      const totalAmount = activeSubtotal + taxAmount;
+
+      const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
+        if (idx === 0) {
+          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+        }
+        return q;
+      });
+
+      return {
+        ...prev,
+        quoteItems: updatedItems,
+        quotes: updatedQuotes,
+        latestQuote: prev.latestQuote ? {
+          ...prev.latestQuote,
+          subtotal: activeSubtotal,
+          tax_amount: taxAmount,
+          total_amount: totalAmount
+        } : prev.latestQuote
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/quote-items/${currentModal.id}/price`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          unitPrice: numPrice,
+          remark: reason || 'Manual Price 적용',
+          isIncluded: willInclude,
+          applyToSameItems: applyToSame
+        })
+      });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || '단가 적용에 실패했습니다.');
+        await fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message);
+      await fetchData();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveManualPrice = async () => {
+    if (!manualPriceModal) return;
+    const cleanStr = String(manualPriceInput || '').replace(/[^0-9]/g, '');
+    if (cleanStr === '') {
+      alert('적용할 단가 금액을 입력해 주세요.');
+      return;
+    }
+    const numPrice = Number(cleanStr);
+    await handleDirectApplyPrice(numPrice, manualPriceReason || 'Manual Price 적용');
+  };
+
+  // 7. Approve Quote & Lock (PROMPT 14)
+  const handleApproveQuote = async (quoteId: string) => {
+    if (!confirm('이 견적서를 최종 승인하고 수정을 잠그시겠습니까?')) return;
+    try {
+      const res = await fetch(`/api/quotes/${quoteId}/approve`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || '승인 실패');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  // 8. Clone Quote Version (PROMPT 14)
+  const handleCloneVersion = async (quoteId: string) => {
+    try {
+      const res = await fetch(`/api/quotes/${quoteId}/clone-version`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  // 8-1. Toggle Quote Drawing Inclusion (도면별 견적 체크박스 실시간 연동)
+  const handleToggleQuoteDrawing = async (drawingNos: string[], isIncluded: boolean) => {
+    if (!latestQuote || latestQuote.is_locked) return;
+
+    // Optimistic UI Update (0ms instant response)
+    setData((prev: any) => {
+      if (!prev || !prev.quoteItems) return prev;
+      const noSet = new Set(drawingNos);
+      const incVal = isIncluded ? 1 : 0;
+      const updatedItems = prev.quoteItems.map((qi: any) => {
+        if (noSet.has(qi.drawing_no) || noSet.has(qi.item_name)) {
+          return { ...qi, is_included: incVal };
+        }
+        return qi;
+      });
+
+      const activeSubtotal = updatedItems
+        .filter((qi: any) => qi.is_included === 1)
+        .reduce((sum: number, qi: any) => sum + (Number(qi.amount) || 0), 0);
+      const taxRate = prev.quotes?.[0]?.tax_rate ?? 0.10;
+      const taxAmount = Math.round(activeSubtotal * taxRate);
+      const totalAmount = activeSubtotal + taxAmount;
+
+      const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
+        if (idx === 0) {
+          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+        }
+        return q;
+      });
+
+      return {
+        ...prev,
+        quoteItems: updatedItems,
+        quotes: updatedQuotes,
+        latestQuote: prev.latestQuote ? {
+          ...prev.latestQuote,
+          subtotal: activeSubtotal,
+          tax_amount: taxAmount,
+          total_amount: totalAmount
+        } : prev.latestQuote
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drawingNos, isIncluded })
+      });
+      if (res.ok) {
+        const resJson = await res.json();
+        setData((prev: any) => {
+          if (!prev || !prev.quotes) return prev;
+          const updatedQuotes = prev.quotes.map((q: any, idx: number) => {
+            if (idx === 0) {
+              return {
+                ...q,
+                subtotal: resJson.subtotal,
+                tax_amount: resJson.taxAmount,
+                total_amount: resJson.totalAmount
+              };
+            }
+            return q;
+          });
+          return {
+            ...prev,
+            quotes: updatedQuotes,
+            latestQuote: prev.latestQuote ? {
+              ...prev.latestQuote,
+              subtotal: resJson.subtotal,
+              tax_amount: resJson.taxAmount,
+              total_amount: resJson.totalAmount
+            } : prev.latestQuote
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync toggle quote drawing:', err);
+    }
+  };
+
+  // 8-2. Toggle All Quote Drawings Inclusion
+  const handleToggleAllQuoteDrawings = async (isIncluded: boolean) => {
+    setQuoteDropdownOpen(false);
+    if (!latestQuote || latestQuote.is_locked) return;
+
+    const incVal = isIncluded ? 1 : 0;
+    setData((prev: any) => {
+      if (!prev || !prev.quoteItems) return prev;
+      const updatedItems = prev.quoteItems.map((qi: any) => ({ ...qi, is_included: incVal }));
+      const activeSubtotal = isIncluded
+        ? updatedItems.reduce((sum: number, qi: any) => sum + (Number(qi.amount) || 0), 0)
+        : 0;
+      const taxRate = prev.quotes?.[0]?.tax_rate ?? 0.10;
+      const taxAmount = Math.round(activeSubtotal * taxRate);
+      const totalAmount = activeSubtotal + taxAmount;
+
+      const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
+        if (idx === 0) {
+          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+        }
+        return q;
+      });
+
+      return {
+        ...prev,
+        quoteItems: updatedItems,
+        quotes: updatedQuotes,
+        latestQuote: prev.latestQuote ? {
+          ...prev.latestQuote,
+          subtotal: activeSubtotal,
+          tax_amount: taxAmount,
+          total_amount: totalAmount
+        } : prev.latestQuote
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true, isIncluded })
+      });
+      if (res.ok) {
+        const resJson = await res.json();
+        setData((prev: any) => {
+          if (!prev || !prev.quotes) return prev;
+          const updatedQuotes = prev.quotes.map((q: any, idx: number) => {
+            if (idx === 0) {
+              return {
+                ...q,
+                subtotal: resJson.subtotal,
+                tax_amount: resJson.taxAmount,
+                total_amount: resJson.totalAmount
+              };
+            }
+            return q;
+          });
+          return {
+            ...prev,
+            quotes: updatedQuotes,
+            latestQuote: prev.latestQuote ? {
+              ...prev.latestQuote,
+              subtotal: resJson.subtotal,
+              tax_amount: resJson.taxAmount,
+              total_amount: resJson.totalAmount
+            } : prev.latestQuote
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync toggle all quote drawings:', err);
+    }
+  };
+
+  // 8-3. Select Priced Items Only (단가 있는 품목만 선택)
+  const handleSelectPricedOnly = async () => {
+    setQuoteDropdownOpen(false);
+    if (!latestQuote || latestQuote.is_locked) return;
+
+    setData((prev: any) => {
+      if (!prev || !prev.quoteItems) return prev;
+      const updatedItems = prev.quoteItems.map((qi: any) => {
+        const isPriced = Number(qi.unit_price) > 0;
+        return { ...qi, is_included: isPriced ? 1 : 0 };
+      });
+      const activeSubtotal = updatedItems.reduce(
+        (sum: number, qi: any) => (qi.is_included !== 0 ? sum + (Number(qi.amount) || 0) : sum),
+        0
+      );
+      const taxRate = prev.quotes?.[0]?.tax_rate ?? 0.10;
+      const taxAmount = Math.round(activeSubtotal * taxRate);
+      const totalAmount = activeSubtotal + taxAmount;
+
+      const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
+        if (idx === 0) {
+          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+        }
+        return q;
+      });
+
+      return {
+        ...prev,
+        quoteItems: updatedItems,
+        quotes: updatedQuotes,
+        latestQuote: prev.latestQuote ? {
+          ...prev.latestQuote,
+          subtotal: activeSubtotal,
+          tax_amount: taxAmount,
+          total_amount: totalAmount
+        } : prev.latestQuote
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pricedOnly: true })
+      });
+      if (res.ok) {
+        const resJson = await res.json();
+        setData((prev: any) => {
+          if (!prev || !prev.quotes) return prev;
+          const updatedQuotes = prev.quotes.map((q: any, idx: number) => {
+            if (idx === 0) {
+              return {
+                ...q,
+                subtotal: resJson.subtotal,
+                tax_amount: resJson.taxAmount,
+                total_amount: resJson.totalAmount
+              };
+            }
+            return q;
+          });
+          return {
+            ...prev,
+            quotes: updatedQuotes,
+            latestQuote: prev.latestQuote ? {
+              ...prev.latestQuote,
+              subtotal: resJson.subtotal,
+              tax_amount: resJson.taxAmount,
+              total_amount: resJson.totalAmount
+            } : prev.latestQuote
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync select priced only:', err);
+    }
+  };
+
+  // 9. Export to Excel (PROMPT 15)
+  const handleExportExcel = async (quoteId: string, customOptions?: any) => {
+    setActionLoading(true);
+    setExportResult(null);
+    try {
+      const res = await fetch(`/api/quotes/${quoteId}/export-excel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: customOptions ? JSON.stringify(customOptions) : undefined
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setExportResult(json);
+        await fetchData();
+      } else {
+        alert(json.error || '엑셀 출력 실패');
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-24 text-slate-500 font-medium">견적 워크벤치 로딩 중...</div>;
+  }
+
+  const qc = data?.case;
+  const rawFiles = data?.files || [];
+  const files = rawFiles.filter((f: any) => f.file_role !== 'VECTOR_SVG' && f.file_type !== 'SVG' && !f.original_file_name.endsWith('.svg'));
+  const latestParseRun = data?.latestParseRun;
+  const analyzedFileId = latestParseRun?.source_file_id || (files.length > 0 ? files[0]?.id : null);
+  const drawings = data?.drawings || [];
+  const rawBomItems = data?.rawBomItems || [];
+  const flattenedBomItems = data?.flattenedBomItems || [];
+  const normalizedItems = data?.normalizedItems || [];
+  const candidates = data?.candidates || [];
+  const finalBomItems = data?.finalBomItems || [];
+  const latestQuote = data?.latestQuote;
+  const quoteItems = data?.quoteItems || [];
+
+  // 💎 Live Real-Time Statistics for Quote Items (Calculated inline without hook to avoid early-return violation)
+  let totalAllQty = 0;
+  let totalIncludedQty = 0;
+  let liveActiveSubtotal = 0;
+  quoteItems.forEach((qi: any) => {
+    const q = Number(qi.quantity) || 0;
+    totalAllQty += q;
+    if (qi.is_included !== 0) {
+      totalIncludedQty += q;
+      liveActiveSubtotal += Number(qi.amount) || 0;
+    }
+  });
+  const totalQtyStats = { totalAll: totalAllQty, totalIncluded: totalIncludedQty };
+  const liveTaxRate = latestQuote?.tax_rate ?? 0.10;
+  const liveActiveTax = Math.round(liveActiveSubtotal * liveTaxRate);
+  const liveActiveTotal = liveActiveSubtotal + liveActiveTax;
+
+  return (
+    <div className="space-y-6">
+      {/* Top Banner */}
+      <div className="no-print print:hidden bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center space-x-3 mb-2">
+            <span className="text-sm font-mono font-bold px-3 py-1 bg-slate-100 text-slate-800 rounded-lg">
+              {qc.case_no}
+            </span>
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                qc.quote_readiness === 'READY_FOR_QUOTE'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : qc.status === 'ANALYZED'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}
+            >
+              {qc.quote_readiness === 'READY_FOR_QUOTE'
+                ? '견적 산출 준비완료 (READY_FOR_QUOTE)'
+                : qc.status === 'ANALYZED'
+                ? '도면/BOM 분석완료 (검토 필요)'
+                : '도면 등록 대기'}
+            </span>
+          </div>
+
+          <h1 className="text-xl font-bold text-slate-900">{qc.case_name}</h1>
+
+          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-2">
+            <span className="flex items-center space-x-1">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-slate-700">{qc.company_name}</span>
+            </span>
+            <span className="flex items-center space-x-1">
+              <Folder className="w-3.5 h-3.5 text-slate-400" />
+              <span>{qc.project_name}</span>
+            </span>
+            <span className="flex items-center space-x-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+              <span>의뢰일: {qc.request_date}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+          <div className="text-center px-3 border-r border-slate-200">
+            <div className="text-xs text-slate-500 font-medium">도면 수</div>
+            <div className="text-lg font-bold text-slate-900">{drawings.length}</div>
+          </div>
+          <div className="text-center px-3 border-r border-slate-200">
+            <div className="text-xs text-slate-500 font-medium">추출 BOM</div>
+            <div className="text-lg font-bold text-slate-900">{flattenedBomItems.length}</div>
+          </div>
+          <div className="text-center px-3">
+            <div className="text-xs text-slate-500 font-medium">승인 품목</div>
+            <div className="text-lg font-bold text-blue-600">
+              {finalBomItems.filter((f: any) => f.approval_status === 'APPROVED').length} / {normalizedItems.length}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs Navigation */}
+      <div className="no-print print:hidden flex items-center space-x-2 border-b border-slate-200 pb-1 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('cad')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+            activeTab === 'cad'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Upload className="w-4 h-4" />
+          <span>1. 도면등록 & 뷰어</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('quote')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+            activeTab === 'quote'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          <span>2. 견적서 산출 & 단가</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('excel')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+            activeTab === 'excel'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>3. 표준 견적서 미리보기 (PDF/Excel)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('structure')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+            activeTab === 'structure'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>4. 도면구조 & 다단계 BOM</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('approval')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+            activeTab === 'approval'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>5. 마스터 매칭 & 검수자 승인</span>
+        </button>
+      </div>
+
+      {/* TAB 1: CAD File Upload & Viewer (PROMPT 03, 04, 05, 06, 18-R1, 18-R2) */}
+      <div className={activeTab === 'cad' ? "flex flex-col lg:flex-row gap-4 items-start w-full" : "hidden"}>
+          {/* Unified Upload & Files Left Panel (Collapsible) */}
+          {isSidebarOpen ? (
+            <div className="w-full lg:w-[340px] xl:w-[360px] shrink-0 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 animate-in fade-in slide-in-from-left-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  <span>통합 도면 파일 등록</span>
+                </h2>
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  title="도면 등록 패널 접기"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Unified Dropzone with Native Drag & Drop */}
+              <div
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleProcessFile(e.dataTransfer.files[0]);
+                  }
+                }}
+                className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all ${
+                  isDragging
+                    ? 'border-blue-600 bg-blue-50 scale-[1.02] shadow-md ring-4 ring-blue-100'
+                    : 'border-slate-200 hover:border-blue-500 bg-slate-50/50'
+                }`}
+              >
+                <input
+                  type="file"
+                  id="file-upload"
+                  accept=".dwg,.dxf,.pdf,.xls,.xlsx"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer block">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-2.5 transition-colors ${
+                    isDragging ? 'bg-blue-600 text-white animate-bounce' : 'bg-blue-100 text-blue-600'
+                  }`}>
+                    <Upload className="w-6 h-6" />
+                  </div>
+                  <span className="text-xs font-bold text-slate-900 block">
+                    {isDragging ? '🚀 파일을 놓으면 즉시 분석 시작!' : 'DWG 또는 DXF 도면 드래그 & 드롭'}
+                  </span>
+                  <span className="text-[11px] text-slate-400 mt-1 block">
+                    (클릭하여 파일 선택 가능 / 지원: .dwg, .dxf)
+                  </span>
+                </label>
+              </div>
+
+              {(uploading || analyzing) && (
+                <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-xl flex items-center space-x-2 animate-pulse">
+                  <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-blue-600" />
+                  <div className="space-y-0.5">
+                    <span className="font-bold block">
+                      {uploading ? '도면 업로드 및 무결성 검증 중...' : 'DWG 자동변환 및 다단계 BOM 분석 중...'}
+                    </span>
+                    <span className="text-[11px] text-blue-600 block">
+                      {uploading ? '서버 스토리지 저장 중' : 'LibreDWG 변환 → ezdxf 파싱 → 다단계 BOM 롤업'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Uploaded Files List */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    등록된 도면 파일 목록 ({files.length})
+                  </h4>
+                  <span className="text-[11px] text-slate-400">클릭하여 선택</span>
+                </div>
+                {files.map((f: any) => {
+                  const isSelected = (selectedFileId === f.id) || (!selectedFileId && f.id === analyzedFileId);
+                  const isCurrentlyAnalyzed = f.id === analyzedFileId && drawings.length > 0;
+                  const isThisFileAnalyzing = analyzing && (analyzingFileId === f.id || (!analyzingFileId && isSelected));
+                  const isDwg = f.file_type === 'DWG' || f.original_file_name.endsWith('.dwg');
+
+                  return (
+                    <div
+                      key={f.id}
+                      onClick={() => setSelectedFileId(f.id)}
+                      className={`p-3 rounded-xl border text-xs space-y-2 cursor-pointer transition-all ${
+                        isThisFileAnalyzing
+                          ? 'bg-amber-50/90 border-amber-500 shadow-md ring-2 ring-amber-400/50 animate-pulse'
+                          : isSelected
+                          ? 'bg-blue-50/90 border-blue-500 shadow-sm ring-2 ring-blue-400/50'
+                          : 'bg-slate-50 hover:bg-slate-100/90 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-semibold text-slate-900">
+                        <div className="flex items-center space-x-2 truncate">
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                            isThisFileAnalyzing
+                              ? 'bg-amber-500 animate-ping'
+                              : isCurrentlyAnalyzed
+                              ? 'bg-emerald-500 ring-2 ring-emerald-300'
+                              : isSelected
+                              ? 'bg-blue-600'
+                              : 'bg-slate-300'
+                          }`} />
+                          <span className="truncate font-bold text-slate-900">{f.original_file_name}</span>
+                        </div>
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold ${
+                            isDwg ? 'bg-blue-600 text-white' : 'bg-purple-100 text-purple-800'
+                          }`}>
+                            {isDwg ? '원본 DWG' : 'CAD DXF'}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFile(f.id, f.original_file_name);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-100/70 transition-colors cursor-pointer"
+                            title="도면 파일 삭제"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                        <span className="font-mono">{(f.file_size / 1024).toFixed(1)} KB</span>
+                        {isThisFileAnalyzing ? (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-700 font-bold flex items-center space-x-1">
+                            <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
+                            <span>현재 분석 진행 중...</span>
+                          </span>
+                        ) : isCurrentlyAnalyzed ? (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 font-bold flex items-center space-x-1">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>분석 완료 ({drawings.length}개 도면)</span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-200/70 text-slate-600 font-medium">
+                            업로드 완료 (대기)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* File Action Toolbar on Selection */}
+                      {isSelected && !analyzing && (
+                        <div className="flex items-center justify-between pt-1.5 border-t border-blue-200/60">
+                          <span className="text-[11px] text-blue-700 font-semibold">선택된 도면</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartAnalysis(f.id);
+                            }}
+                            disabled={analyzing}
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50 cursor-pointer flex items-center space-x-1"
+                          >
+                            <Play className="w-3 h-3 fill-white" />
+                            <span>이 도면으로 분석 실행</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Single Action Button (PROMPT 18-R1) */}
+              {files.length > 0 && (() => {
+                const targetFile = files.find((f: any) => f.id === (selectedFileId || analyzedFileId)) || files[0];
+                return (
+                  <button
+                    onClick={() => handleStartAnalysis(targetFile?.id)}
+                    disabled={analyzing}
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {analyzing ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>[{targetFile?.original_file_name || '도면'}] 분석 진행 중 (약 6초)...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-white" />
+                        <span>[{targetFile?.original_file_name || '도면'}] 분석 시작 (CAD 자동 분석 실행)</span>
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="hidden lg:flex flex-col items-center justify-center p-3 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-2xl text-slate-600 hover:text-blue-600 text-xs font-bold space-y-2 cursor-pointer transition-all shadow-xs shrink-0"
+              title="도면 등록 패널 펼치기"
+            >
+              <ChevronRight className="w-4 h-4" />
+              <span className="[writing-mode:vertical-lr] tracking-widest text-[11px] font-bold">도면 파일 패널 열기</span>
+            </button>
+          )}
+
+          {/* 2D Real CAD Vector Viewer (Takes 100% of remaining width!) */}
+          <div className="flex-1 w-full min-w-0">
+            <CadViewer
+              caseId={id}
+              cadObjects={data?.cadObjects || []}
+              drawings={drawings}
+              relationships={data?.relationships || []}
+              bomAreas={data?.bomAreas || []}
+              rawBomItems={rawBomItems}
+              isSidebarOpen={isSidebarOpen}
+              onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              externalFocusIdx={externalFocusIdx}
+              onClearExternalFocus={() => setExternalFocusIdx(null)}
+              quoteItems={quoteItems}
+              latestQuote={latestQuote}
+              onToggleQuoteItem={handleToggleQuoteDrawing}
+              onToggleAllQuoteDrawings={handleToggleAllQuoteDrawings}
+            />
+          </div>
+      </div>
+
+      {/* TAB 2: Quote Engine & Pricing Workspace (PROMPT 14) */}
+      {activeTab === 'quote' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-slate-900 text-base">견적서 작성 및 단가 산출 (Quote Engine)</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                승인된 Final BOM 기준으로 Price Master 단가를 매칭하여 품목별 금액, 소계, 부가세(10%), 총 견적금액을 계산합니다.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleAutoApproveAndCreateQuote}
+                disabled={actionLoading}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
+                <span>{latestQuote ? '견적 재계산' : 'AI 추천 일괄 승인 & 견적서 생성'}</span>
+              </button>
+              {latestQuote && (
+                <button
+                  onClick={() => handleCloneVersion(latestQuote.id)}
+                  className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  새 버전 복제 (V{latestQuote.quote_version + 1})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {latestQuote ? (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+              {/* Quote Header Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-xs text-slate-500 block">견적번호</span>
+                  <span className="text-sm font-bold font-mono text-slate-900">{latestQuote.quote_no}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 block">견적상태</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                    {latestQuote.status} {latestQuote.is_locked ? '(잠금)' : ''}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 block">공급가액 (Subtotal)</span>
+                  <span className="text-sm font-bold text-slate-900">₩{liveActiveSubtotal.toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 block">총 견적금액 (VAT포함)</span>
+                  <span className="text-base font-extrabold text-blue-600">₩{liveActiveTotal.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Quote Items Table */}
+              <div className="overflow-x-auto min-h-[260px]">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100/90 text-slate-700 font-bold border-b-2 border-slate-200">
+                      <th className="py-1.5 pl-3 pr-2 border-l-[3.5px] border-l-transparent">No</th>
+                      <th className="py-1.5 px-2 text-center w-24 relative select-none">
+                        <div ref={quoteDropdownRef} className="inline-block relative">
+                          <button
+                            type="button"
+                            onClick={() => setQuoteDropdownOpen(!quoteDropdownOpen)}
+                            disabled={latestQuote.is_locked}
+                            className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded border text-[11px] font-bold transition-all cursor-pointer ${
+                              quoteDropdownOpen
+                                ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 shadow-2xs'
+                            } disabled:opacity-50`}
+                            title="견적 체크박스 전체선택 / 전체해제 풀다운 메뉴"
+                          >
+                            <span>견적</span>
+                            <ChevronDown
+                              className={`w-3 h-3 transition-transform duration-150 ${
+                                quoteDropdownOpen ? 'rotate-180 text-white' : 'text-slate-500'
+                              }`}
+                            />
+                          </button>
+
+                          {/* Pull-down Menu Popover */}
+                          {quoteDropdownOpen && (
+                            <div className="absolute left-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1.5 text-left text-xs animate-in fade-in zoom-in-95">
+                              <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] text-slate-500 font-medium flex items-center justify-between">
+                                <span>견적 포함 항목 제어</span>
+                                <span className="font-bold font-mono text-blue-600">
+                                  {quoteItems.filter((q: any) => q.is_included !== 0).length} / {quoteItems.length}
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAllQuoteDrawings(true)}
+                                className="w-full px-3 py-2 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center space-x-2 cursor-pointer font-semibold transition-colors"
+                              >
+                                <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+                                <div className="leading-tight">
+                                  <div className="font-bold text-slate-800">전체 선택 (All)</div>
+                                  <div className="text-[10px] text-slate-400 font-normal">모든 품목 견적서 포함</div>
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAllQuoteDrawings(false)}
+                                className="w-full px-3 py-2 text-left text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center space-x-2 cursor-pointer font-semibold transition-colors"
+                              >
+                                <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                                <div className="leading-tight">
+                                  <div className="font-bold text-slate-800">전체 해제 (Clear)</div>
+                                  <div className="text-[10px] text-slate-400 font-normal">모든 품목 견적서 제외</div>
+                                </div>
+                              </button>
+
+                              <div className="border-t border-slate-100 my-1"></div>
+
+                              <button
+                                type="button"
+                                onClick={handleSelectPricedOnly}
+                                className="w-full px-3 py-2 text-left text-slate-700 hover:bg-amber-50 hover:text-amber-800 flex items-center space-x-2 cursor-pointer font-semibold transition-colors"
+                              >
+                                <Coins className="w-4 h-4 text-amber-500 shrink-0" />
+                                <div className="leading-tight">
+                                  <div className="font-bold text-slate-800">단가 있는 품목만 선택</div>
+                                  <div className="text-[10px] text-slate-400 font-normal">미단가(0원) 품목 제외</div>
+                                </div>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </th>
+                      <th className="py-1.5 px-3">마스터 코드</th>
+                      <th className="py-1.5 px-3">품명 (Standard Name)</th>
+                      <th className="py-1.5 px-3">규격 / 재질</th>
+                      <th className="py-1.5 px-3 text-right">
+                        <div className="inline-flex items-center justify-end space-x-1.5 whitespace-nowrap">
+                          <span>수량</span>
+                          <span
+                            className="text-[10.5px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"
+                            title={
+                              totalQtyStats.totalIncluded !== totalQtyStats.totalAll
+                                ? `견적 포함 수량: ${totalQtyStats.totalIncluded.toLocaleString()} EA / 전체 수량: ${totalQtyStats.totalAll.toLocaleString()} EA`
+                                : `총 수량 합계: ${totalQtyStats.totalIncluded.toLocaleString()} EA`
+                            }
+                          >
+                            (합계: {totalQtyStats.totalIncluded.toLocaleString()}
+                            {totalQtyStats.totalIncluded !== totalQtyStats.totalAll && (
+                              <span className="text-slate-400 font-normal text-[9.5px]">/{totalQtyStats.totalAll.toLocaleString()}</span>
+                            )}{' '}
+                            EA)
+                          </span>
+                        </div>
+                      </th>
+                      <th className="py-1.5 px-3 text-right">
+                        <div className="inline-flex items-center justify-end space-x-1.5 whitespace-nowrap">
+                          <span>단가 (원)</span>
+                          <span
+                            className="text-[10.5px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 inline-flex items-center space-x-0.5"
+                            title="단가 셀을 클릭하여 직접 수정하거나 Manual Price로 변경할 수 있습니다"
+                          >
+                            <Pencil className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                            <span>(수정 가능)</span>
+                          </span>
+                        </div>
+                      </th>
+                      <th className="py-1.5 px-3 text-right">금액 (원)</th>
+                      <th className="py-1.5 px-3 text-center">단가 출처</th>
+                      <th className="py-1.5 px-3 text-center">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200/60">
+                    {quoteItems.map((qi: any, idx: number) => {
+                      const isStripe = idx % 2 === 1;
+                      const isExcluded = qi.is_included === 0;
+                      return (
+                        <tr
+                          key={qi.id}
+                          className={`dwell-row-hover ${
+                            isExcluded
+                              ? 'dwell-row-excluded opacity-40 bg-slate-100/60 text-slate-400'
+                              : isStripe
+                              ? 'bg-slate-100/80'
+                              : 'bg-white'
+                          }`}
+                        >
+                          <td className="dwell-indicator py-1.5 pl-3 pr-2 font-mono font-bold text-slate-500 border-l-[3.5px] border-l-transparent">
+                            {qi.item_no}
+                          </td>
+                          <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={!isExcluded}
+                              disabled={latestQuote.is_locked}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                handleToggleQuoteDrawing([qi.drawing_no || qi.item_name], checked);
+                              }}
+                              className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              title={!isExcluded ? '견적 포함 (클릭 시 견적 제외)' : '견적 제외됨 (클릭 시 견적 포함)'}
+                            />
+                          </td>
+                          <td className={`py-1.5 px-3 font-semibold ${isExcluded ? 'text-slate-400' : 'text-slate-900'}`}>
+                            {qi.master_code}
+                          </td>
+                          <td className={`py-1.5 px-3 font-medium ${isExcluded ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                            {qi.item_name}
+                          </td>
+                          <td className="py-1.5 px-3 text-slate-600">
+                            {qi.specification} / {qi.material}
+                          </td>
+                          <td className="py-1.5 px-3 font-bold text-slate-900 text-right">
+                            {qi.quantity} {qi.unit}
+                          </td>
+                          <td
+                            className={`py-1 px-3 font-mono text-right text-slate-800 transition-colors ${
+                              !latestQuote.is_locked && inlineEditId !== qi.id
+                                ? 'cursor-pointer hover:bg-blue-200/50'
+                                : ''
+                            }`}
+                            onClick={() => {
+                              if (!latestQuote.is_locked && inlineEditId !== qi.id) {
+                                setInlineEditId(qi.id);
+                                setInlineEditValue(qi.unit_price > 0 ? Number(qi.unit_price).toLocaleString() : '');
+                              }
+                            }}
+                            title={!latestQuote.is_locked && inlineEditId !== qi.id ? '클릭하여 단가 바로 입력 (Enter/외부 클릭 시 자동 저장)' : undefined}
+                          >
+                            {!latestQuote.is_locked && inlineEditId === qi.id ? (
+                              <div
+                                className="inline-flex items-center justify-end w-full relative"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-blue-500 font-bold text-xs mr-1 select-none">₩</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoFocus
+                                  onFocus={(e) => e.target.select()}
+                                  value={inlineEditValue}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                                    setInlineEditValue(raw ? Number(raw).toLocaleString() : '');
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                      e.preventDefault();
+                                      isCancelledRef.current = false;
+                                      handleSaveInlinePrice(qi.id, inlineEditValue, true);
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      isCancelledRef.current = true;
+                                      setInlineEditId(null);
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    if (isCancelledRef.current) {
+                                      isCancelledRef.current = false;
+                                      return;
+                                    }
+                                    if (!isSavingInlineRef.current) {
+                                      handleSaveInlinePrice(qi.id, inlineEditValue, false);
+                                    }
+                                  }}
+                                  placeholder="0"
+                                  className="w-24 sm:w-28 px-2 py-0.5 bg-white border border-blue-500 rounded text-xs font-mono font-bold text-right text-slate-900 focus:outline-hidden ring-1 ring-blue-200"
+                                />
+                              </div>
+                            ) : qi.unit_price > 0 ? (
+                              <div
+                                className="group/price inline-flex items-center justify-end space-x-1 font-mono font-bold text-slate-800 group-hover/price:text-blue-700 cursor-pointer"
+                              >
+                                <span>₩{qi.unit_price.toLocaleString()}</span>
+                                {!latestQuote.is_locked && (
+                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/price:opacity-100 text-blue-500 transition-opacity" />
+                                )}
+                              </div>
+                            ) : (
+                              <div
+                                className="group/price inline-flex items-center justify-end space-x-1 font-mono font-semibold text-slate-400 group-hover/row:text-blue-600 cursor-pointer px-1.5 py-0.5 rounded-sm hover:bg-blue-100/80 transition-colors"
+                              >
+                                <span>0</span>
+                                {!latestQuote.is_locked && (
+                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/price:opacity-100 text-blue-400 transition-opacity" />
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-3 font-mono font-bold text-right text-slate-900 group-hover/row:text-blue-950 transition-colors">
+                            {isExcluded ? (
+                              <span className="text-slate-400 font-normal text-[11px]">₩0 (제외)</span>
+                            ) : (
+                              `₩${qi.amount.toLocaleString()}`
+                            )}
+                          </td>
+                          <td className="py-1.5 px-3 text-center">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              qi.price_source === 'MANUAL_PRICE'
+                                ? 'bg-blue-100 text-blue-800 font-semibold'
+                                : 'bg-slate-200/70 text-slate-700'
+                            }`}>
+                              {qi.price_source}
+                            </span>
+                          </td>
+                          <td className="py-1.5 px-3 text-center">
+                            {!latestQuote.is_locked && (
+                              <button
+                                onClick={() => handleOpenManualPriceModal(qi)}
+                                className="px-2 py-0.5 bg-blue-50 group-hover/row:bg-blue-600 hover:bg-blue-700 text-blue-700 group-hover/row:text-white border border-blue-200 group-hover/row:border-blue-600 rounded text-[10px] font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center space-x-1 shrink-0"
+                                title="과거 수기 단가 이력 조회 및 Manual Price 적용"
+                              >
+                                <Database className="w-2.5 h-2.5 shrink-0" />
+                                <span>Manual Price 적용</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {quoteItems.length > 0 && (
+                    <tfoot className="bg-slate-50/95 border-t-2 border-slate-300 font-bold text-slate-800">
+                      <tr>
+                        <td colSpan={5} className="py-2 px-3 text-right font-sans text-slate-600">
+                          견적 포함 수량 합계:
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-blue-700 font-bold whitespace-nowrap">
+                          {totalQtyStats.totalIncluded.toLocaleString()} EA
+                          {totalQtyStats.totalIncluded !== totalQtyStats.totalAll && (
+                            <span className="block text-[10px] text-slate-400 font-normal">
+                              전체 {totalQtyStats.totalAll.toLocaleString()} EA
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-right text-slate-400 font-sans text-[11px]">-</td>
+                        <td className="py-2 px-3 text-right font-mono text-blue-700 font-bold whitespace-nowrap">
+                          ₩{liveActiveSubtotal.toLocaleString()}
+                        </td>
+                        <td colSpan={2} className="py-2 px-3 text-center text-slate-400 text-[10px] font-sans">
+                          공급가액 기준
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
+                <div className="flex items-center space-x-2.5">
+                  {!latestQuote.is_locked ? (
+                    <button
+                      onClick={() => handleApproveQuote(latestQuote.id)}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 cursor-pointer"
+                    >
+                      <Lock className="w-4 h-4" />
+                      <span>최종 견적 승인 및 잠금 (Lock)</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center space-x-1.5 text-emerald-700 text-xs font-bold">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>최종 승인 완료 (수정 잠금 상태)</span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setActiveTab('structure')}
+                    className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 cursor-pointer transition-colors"
+                    title="상세 도면 구조 및 다단계 BOM 트리 확인"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-slate-500" />
+                    <span>4. 도면구조 & BOM 상세</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('excel')}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer transition-colors"
+                >
+                  <span>다음: 3. 표준견적서 미리보기 & 출력</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center mx-auto text-blue-600 shadow-xs">
+                <Database className="w-7 h-7" />
+              </div>
+              <div className="max-w-md mx-auto">
+                <h4 className="text-slate-900 font-bold text-base">견적서 산출 준비</h4>
+                <p className="text-slate-500 text-xs mt-1">
+                  도면 분석 결과 추출된 {normalizedItems.length}개 BOM 품목에 대해 단가 마스터를 매칭하여 총 견적 금액을 즉시 계산합니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={handleAutoApproveAndCreateQuote}
+                  disabled={actionLoading}
+                  className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-2 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {actionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  <span>🚀 AI 1순위 추천 일괄 승인 & 견적서 즉시 산출</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('approval')}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <span>5. 마스터 매칭 직접 검토</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: Standard Quotation Preview & PDF / Excel Export */}
+      {activeTab === 'excel' && (
+        <QuotationDocumentPreview
+          quote={latestQuote}
+          quoteItems={quoteItems}
+          caseData={data}
+          onExportExcel={handleExportExcel}
+          exportResult={exportResult}
+          actionLoading={actionLoading}
+        />
+      )}
+
+      {/* TAB 4: Structure Map & Multi-Level BOM (PROMPT 07, 08, 09, 10) */}
+      {activeTab === 'structure' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Drawing Structure Tree */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
+                  <Layers className="w-4 h-4 text-blue-600" />
+                  <span>도면 구조 계층 (총 {drawings.length}개 도면)</span>
+                </h3>
+                <span className="text-[11px] font-medium text-slate-400">
+                  메인 {drawings.filter((d: any) => d.drawing_type === 'MAIN_ASSEMBLY').length}개 · 서브 {drawings.filter((d: any) => d.drawing_type !== 'MAIN_ASSEMBLY').length}개
+                </span>
+              </div>
+
+              <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
+                {/* Main Assembly Group */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center space-x-1.5 px-1">
+                    <Folder className="w-3.5 h-3.5 text-blue-600" />
+                    <span>메인 조립도 (Main Assembly)</span>
+                  </div>
+                  {drawings.filter((d: any) => d.drawing_type === 'MAIN_ASSEMBLY').map((d: any) => (
+                    <div
+                      key={d.id}
+                      onClick={() => handleNavigateToCadDrawing(d)}
+                      className="p-3 bg-blue-50/60 hover:bg-blue-100/70 rounded-xl border border-blue-200/80 hover:border-blue-500 text-xs space-y-1.5 cursor-pointer group hover:shadow-md hover:scale-[1.01] transition-all shadow-2xs"
+                      title="클릭 시 CAD 뷰어로 이동하여 이 도면을 화면에 꽉 차게 봅니다"
+                    >
+                      <div className="flex items-center justify-between font-bold text-slate-900">
+                        <span className="font-mono text-blue-700 group-hover:text-blue-950 transition-colors">{d.drawing_no_raw}</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-blue-600 group-hover:bg-blue-700 text-white font-semibold flex items-center space-x-1 shadow-2xs transition-colors">
+                            <Search className="w-2.5 h-2.5" />
+                            <span>도면 보기</span>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-slate-800 font-bold text-xs group-hover:text-blue-900 transition-colors">{d.drawing_name_raw}</div>
+                      <div className="text-[11px] text-slate-500 pt-1 border-t border-blue-100 flex items-center justify-between">
+                        <span>프로젝트: {d.project_name || '인버터 조립 LINE'}</span>
+                        <span className="flex items-center space-x-0.5 text-blue-600 font-medium">
+                          <span>설계: {d.designer || '이경중'} | {d.scale || '1/5'}</span>
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Sub Part Group */}
+                {drawings.filter((d: any) => d.drawing_type !== 'MAIN_ASSEMBLY').length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div className="text-[11px] font-bold text-purple-900 uppercase tracking-wider flex items-center space-x-1.5 px-1">
+                      <FileText className="w-3.5 h-3.5 text-purple-600" />
+                      <span>단위 부품도 / 서브도면 (Sub-Part Drawings)</span>
+                    </div>
+                    {drawings.filter((d: any) => d.drawing_type !== 'MAIN_ASSEMBLY').map((d: any) => (
+                      <div
+                        key={d.id}
+                        onClick={() => handleNavigateToCadDrawing(d)}
+                        className="p-2.5 bg-slate-50 hover:bg-purple-50/70 rounded-xl border border-slate-200 hover:border-purple-400 text-xs space-y-1.5 cursor-pointer group hover:shadow-md hover:scale-[1.01] transition-all shadow-2xs"
+                        title="클릭 시 CAD 뷰어로 이동하여 이 도면을 화면에 꽉 차게 봅니다"
+                      >
+                        <div className="flex items-center justify-between font-semibold text-slate-900">
+                          <span className="font-mono text-slate-700 group-hover:text-purple-900 transition-colors">{d.drawing_no_raw}</span>
+                          <div className="flex items-center space-x-1">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 group-hover:bg-purple-600 group-hover:text-white text-purple-800 font-medium flex items-center space-x-1 border border-purple-200 group-hover:border-purple-600 transition-all">
+                              <Search className="w-2.5 h-2.5" />
+                              <span>도면 보기</span>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-slate-700 font-medium group-hover:text-purple-950 transition-colors">{d.drawing_name_raw}</div>
+                        <div className="text-[10.5px] text-slate-400 flex items-center justify-between pt-0.5">
+                          <span>재질: {d.material || 'SS400/S45C'} · Rev: {d.revision || 'R00'}</span>
+                          <span className="flex items-center space-x-0.5 text-purple-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Flattened BOM & Multi-Level Rollup Table */}
+            <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
+                  <Database className="w-4 h-4 text-blue-600" />
+                  <span>다단계 BOM 롤업 및 Flattened BOM ({flattenedBomItems.length} 품목)</span>
+                </h3>
+                <span className="text-xs text-slate-500 font-medium">
+                  수량 전파 공식: Qty(Effective) = Qty(Root) × Qty(Sub) × Qty(Part)
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                      <th className="py-2.5 px-3">No</th>
+                      <th className="py-2.5 px-3">도면 품번</th>
+                      <th className="py-2.5 px-3">품명 (Raw Name)</th>
+                      <th className="py-2.5 px-3">규격</th>
+                      <th className="py-2.5 px-3">재질</th>
+                      <th className="py-2.5 px-3 text-right">총 소요수량</th>
+                      <th className="py-2.5 px-3 text-center">단위</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {flattenedBomItems.map((it: any, idx: number) => {
+                      const matchedDwg = drawings.find((d: any) =>
+                        (it.part_no && it.part_no !== '-' && d.drawing_no_raw && (d.drawing_no_raw === it.part_no || d.drawing_no_raw.includes(it.part_no))) ||
+                        (it.name && d.drawing_name_raw && it.name === d.drawing_name_raw)
+                      );
+                      return (
+                        <tr key={it.id} className="hover:bg-slate-50/80 group">
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-500">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-900">
+                            <div className="flex items-center justify-between space-x-1">
+                              <span className="font-mono">{it.part_no || '-'}</span>
+                              {matchedDwg && (
+                                <button
+                                  onClick={() => handleNavigateToCadDrawing(matchedDwg)}
+                                  className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-blue-50 group-hover:bg-blue-600 text-blue-600 group-hover:text-white border border-blue-200 group-hover:border-blue-600 font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-2xs shrink-0"
+                                  title={`[${matchedDwg.drawing_no_raw}] CAD 도면으로 이동하여 전체 화면 보기`}
+                                >
+                                  <Search className="w-2.5 h-2.5" />
+                                  <span>도면 보기</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 font-medium text-slate-800">{it.name}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{it.specification || '-'}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{it.material || '-'}</td>
+                          <td className="py-2.5 px-3 font-bold text-slate-900 text-right">{it.total_quantity}</td>
+                          <td className="py-2.5 px-3 text-center text-slate-500">{it.unit}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  onClick={() => setActiveTab('quote')}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>2. 견적서로 돌아가기</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('approval')}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <span>다음: 5. 마스터 매칭 및 검수자 승인</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: Master Matching & Reviewer Approval (PROMPT 11, 12, 13) */}
+      {activeTab === 'approval' && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-slate-900 text-base">검수자 승인 워크벤치 (Reviewer Approval Workbench)</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                AI 추천 마스터 품목을 검토하여 기존품 승인, 유사품 차이 승인, 신규 마스터 등록 또는 견적 제외를 확정합니다.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleBulkApprove}
+                disabled={actionLoading}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>1순위 추천 일괄 승인 (Bulk Approve)</span>
+              </button>
+              <button
+                onClick={handleCreateQuote}
+                disabled={actionLoading}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <span>승인 반영 ➡️ 2. 견적서 산출로 이동</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column: Normalized Items List */}
+            <div className="lg:col-span-5 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                정규화된 BOM 품목 ({normalizedItems.length})
+              </h4>
+
+              <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
+                {normalizedItems.map((ni: any) => {
+                  const finalItem = finalBomItems.find((f: any) => f.normalized_item_id === ni.id);
+                  const isSelected = selectedNormItem?.id === ni.id;
+
+                  return (
+                    <div
+                      key={ni.id}
+                      onClick={() => setSelectedNormItem(ni)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer text-xs space-y-1.5 ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50/50 shadow-xs'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">{ni.normalized_name}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                            finalItem
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {finalItem ? '승인완료' : '검토필요'}
+                        </span>
+                      </div>
+
+                      <div className="text-slate-500 text-[11px]">
+                        Raw: <span className="font-mono">{ni.raw_name}</span> | 수량: {ni.quantity} {ni.unit}
+                      </div>
+
+                      {finalItem && (
+                        <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-slate-100 flex items-center space-x-1">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>승인 마스터: [{finalItem.final_master_code}] {finalItem.final_name}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right Column: Selected Item & Top 3 Recommendations */}
+            <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+              {selectedNormItem ? (
+                <>
+                  <div className="border-b border-slate-100 pb-4">
+                    <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
+                      선택 품목 검토
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900">{selectedNormItem.normalized_name}</h3>
+                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs bg-slate-50 p-2.5 rounded-xl text-slate-600">
+                      <div><span className="text-slate-400">규격:</span> {selectedNormItem.spec_candidate || '-'}</div>
+                      <div><span className="text-slate-400">재질:</span> {selectedNormItem.material_candidate || '-'}</div>
+                      <div><span className="text-slate-400">수량:</span> {selectedNormItem.quantity} {selectedNormItem.unit}</div>
+                    </div>
+                  </div>
+
+                  {/* Top 3 Master Recommendation Cards */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>추천 마스터 후보 (Top 3 Candidates)</span>
+                    </h4>
+
+                    {candidates
+                      .filter((c: any) => c.normalized_item_id === selectedNormItem.id)
+                      .map((cand: any) => {
+                        const pos = JSON.parse(cand.positive_evidence_json || '[]');
+                        const neg = JSON.parse(cand.negative_evidence_json || '[]');
+
+                        return (
+                          <div
+                            key={cand.id}
+                            className="p-4 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50/50 transition-all space-y-3"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center">
+                                  {cand.rank}
+                                </span>
+                                <span className="font-bold text-slate-900 text-sm">
+                                  [{cand.master_code}] {cand.standard_name}
+                                </span>
+                              </div>
+                              <span className="text-xs font-extrabold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                                점수: {cand.total_score}점
+                              </span>
+                            </div>
+
+                            {/* Evidence Reasons (PROMPT 12) */}
+                            <div className="space-y-1 text-xs">
+                              {pos.map((p: string, i: number) => (
+                                <div key={i} className="text-emerald-700 flex items-center space-x-1">
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{p}</span>
+                                </div>
+                              ))}
+                              {neg.map((n: string, i: number) => (
+                                <div key={i} className="text-red-600 flex items-center space-x-1">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{n}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Approval Action Buttons (PROMPT 13) */}
+                            <div className="flex items-center space-x-2 pt-2 border-t border-slate-200">
+                              <button
+                                onClick={() => handleApproveItem(selectedNormItem.id, 'EXISTING_MASTER', cand)}
+                                disabled={actionLoading}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                이 마스터로 승인
+                              </button>
+                              <button
+                                onClick={() => handleApproveItem(selectedNormItem.id, 'SIMILAR_MASTER', cand, '유사품 규격 차이 승인')}
+                                disabled={actionLoading}
+                                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                              >
+                                유사품으로 승인
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* Exception Decisions (PROMPT 13) */}
+                  <div className="flex items-center space-x-2 pt-3 border-t border-slate-100">
+                    <button
+                      onClick={() => handleApproveItem(selectedNormItem.id, 'NEW_ITEM_CANDIDATE', null, '신규 마스터 등록 후보')}
+                      className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-semibold transition-colors"
+                    >
+                      신규 마스터 후보 지정
+                    </button>
+                    <button
+                      onClick={() => handleApproveItem(selectedNormItem.id, 'EXCLUDED', null, '견적 제외 품목')}
+                      className="px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded-xl text-xs font-semibold transition-colors"
+                    >
+                      견적 제외 (EXCLUDED)
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-16 text-slate-400 text-sm">품목을 선택해주세요.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Price Modal (방안 A: 수기 단가 추천 이력 & 자동 누적 풀) */}
+      {manualPriceModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-bold text-xs rounded-md">
+                    Manual Price
+                  </span>
+                  <h3 className="text-base font-bold text-slate-900">수기 단가 적용 & 추천 이력</h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  과거 적용된 Manual Price 리스트를 조회하여 원클릭으로 선택하거나, 신규 단가를 직접 입력하여 적용합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualPriceModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Target Item Info Box */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 text-sm">{manualPriceModal.item_name}</span>
+                <span className="font-mono text-slate-500 font-semibold">{manualPriceModal.master_code || '미등록'}</span>
+              </div>
+              <div className="text-slate-600 flex items-center space-x-3 text-[11px]">
+                <span>규격: <strong className="text-slate-800">{manualPriceModal.specification || '-'}</strong></span>
+                <span>재질: <strong className="text-slate-800">{manualPriceModal.material || '-'}</strong></span>
+                <span>수량: <strong className="text-slate-800 font-mono">{manualPriceModal.quantity} {manualPriceModal.unit}</strong></span>
+              </div>
+            </div>
+
+            {/* Past Manual Price Candidates / Recommendation List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Manual Price 추천 이력 ({manualPriceHistory.length}건)</span>
+                </h4>
+                <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                  클릭: 자동 입력 / 더블클릭: 즉시 적용 및 닫기
+                </span>
+              </div>
+
+              {loadingHistory ? (
+                <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl flex items-center justify-center space-x-2 border border-slate-100">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                  <span>추천 리스트 불러오는 중...</span>
+                </div>
+              ) : manualPriceHistory.length > 0 ? (
+                <div className="max-h-52 overflow-y-auto space-y-2 pr-1 p-1">
+                  {manualPriceHistory.map((item: any) => {
+                    const isSelected = selectedHistoryId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedHistoryId(item.id);
+                          setManualPriceInput(Number(item.unit_price).toLocaleString());
+                          setManualPriceReason(item.remark || '과거 Manual Price 이력 적용');
+                        }}
+                        onDoubleClick={() => {
+                          handleDirectApplyPrice(Number(item.unit_price), item.remark || '과거 Manual Price 이력 적용');
+                        }}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group select-none ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50/90 ring-2 ring-blue-500/25 shadow-xs'
+                            : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 bg-white hover:shadow-2xs'
+                        }`}
+                        title="클릭 시 단가/사유 입력창 반영 | 더블클릭 시 이 단가로 즉시 적용하고 창 닫기"
+                      >
+                        <div className="space-y-1 min-w-0 flex-1 mr-3">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                            <span className={`font-bold text-xs ${isSelected ? 'text-blue-900 font-extrabold' : 'text-slate-900 group-hover:text-blue-700'}`}>
+                              {item.item_name}
+                            </span>
+                            {item.specification && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                isSelected ? 'bg-white text-blue-800 border-blue-200 font-medium' : 'bg-slate-50 text-slate-600 border-slate-200'
+                              }`}>
+                                {item.specification}
+                              </span>
+                            )}
+                            {item.material && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                isSelected ? 'bg-white text-blue-800 border-blue-200 font-medium' : 'bg-slate-50 text-slate-600 border-slate-200'
+                              }`}>
+                                {item.material}
+                              </span>
+                            )}
+                          </div>
+                          <p className={`text-[11px] truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-500'}`}>
+                            사유: {item.remark || '-'}
+                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0 flex flex-col items-end space-y-1">
+                          <div className="flex items-center space-x-1.5">
+                            {isSelected ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white flex items-center space-x-1 shadow-2xs">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>선택됨 (더블클릭 즉시적용)</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-blue-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                더블클릭 즉시적용 ➔
+                              </span>
+                            )}
+                            <span className={`font-mono text-sm ${
+                              isSelected
+                                ? 'font-extrabold text-blue-700'
+                                : 'font-bold text-blue-600 group-hover:text-blue-700'
+                            }`}>
+                              ₩{Number(item.unit_price).toLocaleString()}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400">
+                            {item.created_at?.slice(0, 10)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  등록된 과거 Manual Price 이력이 없습니다. 아래에서 직접 입력하시면 풀(Pool)에 자동 저장됩니다.
+                </div>
+              )}
+            </div>
+
+            {/* Input Form */}
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    적용 단가 (원) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3 text-slate-400 font-bold text-xs">₩</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={manualPriceInput}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        setManualPriceInput(raw ? Number(raw).toLocaleString() : '');
+                      }}
+                      placeholder="예: 45,000"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    입력 사유 (비고)
+                  </label>
+                  <input
+                    type="text"
+                    value={manualPriceReason}
+                    onChange={(e) => setManualPriceReason(e.target.value)}
+                    placeholder="예: 외주 임가공비 협의가, 원자재 시세 반영 등"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-blue-800 flex items-start space-x-1.5">
+                <Info className="w-3.5 h-3.5 text-blue-600 mt-0.5 shrink-0" />
+                <span>
+                  <strong>방안 A 자동 학습:</strong> 지금 적용한 단가와 사유는 회사의 <strong>Manual Price 풀</strong>에 자동 저장되어, 다음 번 견적 시 유사 부품 추천 리스트로 제공됩니다.
+                </span>
+              </div>
+
+              {/* Application Scope & Quote Inclusion Options */}
+              <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                {/* Auto include in quote toggle */}
+                <label className="flex items-center space-x-2 text-xs font-semibold text-slate-800 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoIncludeInQuote}
+                    onChange={(e) => setAutoIncludeInQuote(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span className="flex items-center space-x-1.5 flex-wrap">
+                    <span className="text-slate-900 font-bold">견적 선택 체크 자동 활성화</span>
+                    <span className="text-slate-500 text-[11px] font-normal">(단가 적용 시 해당 품목을 견적서에 자동 포함)</span>
+                  </span>
+                </label>
+
+                {/* Scope selection: SINGLE vs ALL_SAME */}
+                {(() => {
+                  const sameCount = (quoteItems || []).filter((q: any) => q.item_name === manualPriceModal?.item_name).length;
+                  return (
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-600">단가 및 견적 적용 범위 선택:</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label
+                          className={`flex items-start space-x-2 p-2.5 rounded-xl border cursor-pointer select-none transition-all ${
+                            applyScope === 'SINGLE'
+                              ? 'bg-blue-50/90 border-blue-500 text-blue-950 font-bold ring-1 ring-blue-500/20 shadow-2xs'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100/70'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="applyScope"
+                            value="SINGLE"
+                            checked={applyScope === 'SINGLE'}
+                            onChange={() => setApplyScope('SINGLE')}
+                            className="mt-0.5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                          <div className="text-xs leading-tight">
+                            <div className="font-bold flex items-center space-x-1">
+                              <span>현재 품목 1건만 적용</span>
+                              <span className="text-[10px] px-1 py-0.2 bg-blue-100 text-blue-800 rounded font-semibold">기본(안전)</span>
+                            </div>
+                            <div className="text-[10.5px] text-slate-500 font-normal mt-1">
+                              No. {manualPriceModal?.item_no} ({manualPriceModal?.quantity} {manualPriceModal?.unit})에만 적용
+                            </div>
+                          </div>
+                        </label>
+
+                        {sameCount > 1 ? (
+                          <label
+                            className={`flex items-start space-x-2 p-2.5 rounded-xl border cursor-pointer select-none transition-all ${
+                              applyScope === 'ALL_SAME'
+                                ? 'bg-blue-50/90 border-blue-500 text-blue-950 font-bold ring-1 ring-blue-500/20 shadow-2xs'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="applyScope"
+                              value="ALL_SAME"
+                              checked={applyScope === 'ALL_SAME'}
+                              onChange={() => setApplyScope('ALL_SAME')}
+                              className="mt-0.5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <div className="text-xs leading-tight">
+                              <div className="font-bold text-blue-900">동일 품명 {sameCount}건 일괄 적용</div>
+                              <div className="text-[10.5px] text-blue-600 font-normal mt-1">
+                                {manualPriceModal?.item_name} 전체에 동시 적용
+                              </div>
+                            </div>
+                          </label>
+                        ) : (
+                          <div className="p-2.5 rounded-xl border border-dashed border-slate-200 text-slate-400 text-[11px] flex items-center justify-center">
+                            동일한 다른 부품 없음 (단일 부품)
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setManualPriceModal(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveManualPrice}
+                disabled={actionLoading}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {actionLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                <span>Manual Price 확정 및 적용</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

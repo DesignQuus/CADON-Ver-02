@@ -1,0 +1,111 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
+import { Layers, FileText, CheckCircle2, ShieldAlert, LogOut, UserCheck } from 'lucide-react';
+
+export default function Navigation() {
+  const [user, setUser] = useState<any>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : { user: null }))
+      .then((data) => setUser(data.user))
+      .catch(() => setUser(null));
+  }, [pathname]);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setUser(null);
+    router.push('/login');
+  };
+
+  if (pathname === '/login') return null;
+
+  return (
+    <header className="no-print print:hidden bg-white border-b border-slate-200 sticky top-0 z-50 shadow-xs">
+      <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="flex items-center space-x-6">
+          <Link href="/cases" className="flex items-center space-x-2">
+            <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm font-bold">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-bold text-slate-900 text-lg leading-tight tracking-tight block">
+                CADON-BOM <span className="text-blue-600 font-extrabold">AI</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium tracking-wider uppercase block">
+                Server POC Ver-02
+              </span>
+            </div>
+          </Link>
+
+          <nav className="hidden md:flex items-center space-x-1 pl-4 border-l border-slate-200">
+            <Link
+              href="/cases"
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+                pathname.startsWith('/cases')
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>견적의뢰 관리</span>
+            </Link>
+            <Link
+              href="/admin/golden"
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+                pathname.startsWith('/admin/golden')
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>골든 데이터셋 검증</span>
+            </Link>
+          </nav>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          {user ? (
+            <div className="flex items-center space-x-3">
+              <div className="text-right hidden sm:block">
+                <div className="text-sm font-semibold text-slate-800 flex items-center justify-end space-x-1">
+                  <span>{user.name}</span>
+                  {user.role === 'SUPER_ADMIN' ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                      최고관리자
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                      영업담당
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500">{user.loginId}</div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="로그아웃"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex items-center space-x-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-xs"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>로그인</span>
+            </Link>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}

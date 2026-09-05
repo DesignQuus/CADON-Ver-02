@@ -1,0 +1,143 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const qc = db.prepare('SELECT * FROM quotation_cases WHERE id = ?').get(id) as any;
+  if (!qc) {
+    return NextResponse.json({ error: '견적건을 찾을 수 없습니다.' }, { status: 404 });
+  }
+
+  try {
+    const finalItems = db.prepare(`
+      SELECT * FROM final_bom_items
+      WHERE quotation_case_id = ? AND approval_status = 'APPROVED'
+      ORDER BY created_at ASC
+    `).all(id) as any[];
+
+    if (finalItems.length === 0) {
+      return NextResponse.json({ error: '승인된 Final BOM 품목이 없습니다. 먼저 품목을 승인해주세요.' }, { status: 400 });
+    }
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const quoteVersion = (db.prepare('SELECT COUNT(*) as cnt FROM quotes WHERE quotation_case_id = ?').get(id) as any).cnt + 1;
+    const quoteNo = `Q-${qc.case_no.replace('QT-', '')}-V${quoteVersion}`;
+    const quoteId = `quote_${Date.now()}`;
+
+    let subtotal = 0;
+    const quoteItemsData: any[] = [];
+
+    for (let idx = 0; idx < finalItems.length; idx++) {
+      const item = finalItems[idx];
+      let unitPrice = 0;
+      let priceSource = 'NOT_FOUND';
+      let priceStatus = 'PRICE_NOT_FOUND';
+
+      // 1. Search Price Master
+      if (item.final_master_id) {
+        // Customer specific first, then standard
+        const custPrice = db.prepare(`
+          SELECT * FROM price_masters
+          WHERE master_id = ? AND company_id = ? AND is_active = 1
+        `).get(item.final_master_id, qc.company_id) as any;
+
+        const stdPrice = db.prepare(`
+          SELECT * FROM price_masters
+          WHERE master_id = ? AND is_active = 1
+        `).get(item.final_master_id) as any;
+
+        const priceRow = custPrice || stdPrice;
+        if (priceRow) {
+          unitPrice = priceRow.unit_price;
+          priceSource = custPrice ? 'CUSTOMER_PRICE' : 'STANDARD_PRICE';
+          priceStatus = 'READY';
+        }
+      }
+
+      const qty = item.final_quantity || 1.0;
+      const amount = Math.round(qty * unitPrice);
+      subtotal += amount;
+
+      quoteItemsData.push({
+        id: `qitem_${quoteId}_${idx+1}`,
+        quote_id: quoteId,
+        final_bom_item_id: item.id,
+        master_id: item.final_master_id,
+        item_no: idx + 1,
+        master_code: item.final_master_code || '-',
+        item_name: item.final_name,
+        specification: item.final_spec || '-',
+        material: item.final_material || '-',
+        quantity: qty,
+        unit: item.final_unit || 'EA',
+        unit_price: unitPrice,
+        amount: amount,
+        price_source: priceSource,
+        price_status: priceStatus,
+        remark: ''
+      });
+    }
+
+    const discountRate = 0;
+    const discountAmount = 0;
+    const taxRate = 0.10;
+    const taxable = subtotal - discountAmount;
+    const taxAmount = Math.round(taxable * taxRate);
+    const totalAmount = taxable + taxAmount;
+
+    // Insert Quote
+    db.prepare(`
+      INSERT INTO quotes (
+        id, quotation_case_id, quote_no, quote_version, company_id, project_id,
+        status, currency, subtotal, discount_type, discount_rate, discount_amount,
+        tax_rate, tax_amount, total_amount, quote_date, is_locked, created_by_user_id,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      quoteId, id, quoteNo, quoteVersion, qc.company_id, qc.project_id,
+      'DRAFT', 'KRW', subtotal, 'AMOUNT', discountRate, discountAmount,
+      taxRate, taxAmount, totalAmount, dateStr, 0, session.userId,
+      now.toISOString(), now.toISOString()
+    );
+
+    // Insert Quote Items
+    const insertQItem = db.prepare(`
+      INSERT INTO quote_items (
+        id, quote_id, final_bom_item_id, master_id, item_no, master_code,
+        item_name, specification, material, quantity, unit, unit_price,
+        amount, price_source, price_status, remark, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const qi of quoteItemsData) {
+      insertQItem.run(
+        qi.id, qi.quote_id, qi.final_bom_item_id, qi.master_id, qi.item_no,
+        qi.master_code, qi.item_name, qi.specification, qi.material,
+        qi.quantity, qi.unit, qi.unit_price, qi.amount, qi.price_source,
+        qi.price_status, qi.remark, now.toISOString()
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      quoteId,
+      quoteNo,
+      quoteVersion,
+      subtotal,
+      taxAmount,
+      totalAmount
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || '견적 생성 실패' }, { status: 500 });
+  }
+}
