@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUser, createSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,8 +15,16 @@ export async function POST(req: NextRequest) {
     }
 
     await createSession(session);
+
+    // Audit log: LOGIN
+    await recordActivity(req, session, {
+      activityType: 'LOGIN',
+      details: `${session.name} (${session.loginId}) 담당자 시스템 접속 로그인 완료`
+    });
+
     return NextResponse.json({ success: true, user: session });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || '서버 오류' }, { status: 500 });
   }
 }
+

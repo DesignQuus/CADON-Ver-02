@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 
 export async function PATCH(
   req: NextRequest,
@@ -90,6 +91,13 @@ export async function PATCH(
       SET subtotal = ?, tax_amount = ?, total_amount = ?, updated_at = ?
       WHERE id = ?
     `).run(subtotal, taxAmount, totalAmount, new Date().toISOString(), quote.id);
+
+    // Audit log: PRICE_UPDATE
+    await recordActivity(req, session, {
+      activityType: 'PRICE_UPDATE',
+      quotationCaseId: quote.quotation_case_id,
+      details: `[${item.item_name}] 단가 변경: ${Number(item.unit_price).toLocaleString()}원 → ${newPrice.toLocaleString()}원 (${applyToSameItems ? `동일 품목 ${updatedIds.length}건 일괄 적용` : '1건 적용'})`
+    });
 
     return NextResponse.json({ 
       success: true, 

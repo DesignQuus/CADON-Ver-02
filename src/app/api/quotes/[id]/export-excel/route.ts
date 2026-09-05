@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 import { getStorageSubdir, resolveStoragePath } from '@/lib/storage';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -172,6 +173,13 @@ export async function POST(
       'COMPLETED', quote.status === 'APPROVED' ? 0 : 1,
       session.userId, now
     );
+
+    // Audit log: EXCEL_EXPORT
+    await recordActivity(req, session, {
+      activityType: 'EXCEL_EXPORT',
+      quotationCaseId: quote.quotation_case_id,
+      details: `표준 견적서 엑셀 내보내기 다운로드: ${exportFileName} (${items.length}개 품목, 총액 ${(quote.total_amount || 0).toLocaleString()}원)`
+    });
 
     return NextResponse.json({
       success: true,

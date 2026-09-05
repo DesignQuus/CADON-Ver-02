@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 import { getStorageSubdir } from '@/lib/storage';
 import path from 'path';
 import fs from 'fs';
@@ -66,6 +67,13 @@ export async function POST(
       fileId, id, originalName, storedFileName, storagePath,
       fileType, 'SOURCE', buffer.length, checksum, 'UPLOADED', session.userId, now
     );
+
+    // Audit log: FILE_UPLOAD
+    await recordActivity(req, session, {
+      activityType: 'FILE_UPLOAD',
+      quotationCaseId: id,
+      details: `도면 파일 업로드: ${originalName} (${fileType}, ${(buffer.length / 1024).toFixed(1)} KB)`
+    });
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 
 export async function POST(
   req: NextRequest,
@@ -97,6 +98,19 @@ export async function POST(
       FROM quote_items
       WHERE quote_id = ?
     `).get(latestQuote.id) as any;
+
+    // Audit log: QUOTE_TOGGLE
+    const toggleDesc = all
+      ? (flagVal ? '견적 품목 전체 선택' : '견적 품목 전체 해제')
+      : body.pricedOnly
+      ? '단가 있는 품목만 자동 선택'
+      : `도면/품목 [${(drawingNos || []).slice(0, 3).join(', ')}${(drawingNos || []).length > 3 ? ` 외 ${(drawingNos || []).length - 3}건` : ''}] 견적 ${flagVal ? '포함' : '제외'}`;
+
+    await recordActivity(req, session, {
+      activityType: 'QUOTE_TOGGLE',
+      quotationCaseId: id,
+      details: `${toggleDesc} (포함: ${counts?.included_items || 0} / 총: ${counts?.total_items || 0} EA)`
+    });
 
     return NextResponse.json({
       success: true,

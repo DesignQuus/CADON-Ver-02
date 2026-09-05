@@ -510,7 +510,25 @@ export function initializeDatabase() {
       FOREIGN KEY (golden_case_id) REFERENCES golden_cases(id) ON DELETE CASCADE
     );
 
+    -- 16. User Activity Logs (감사 로그: 누가 로그인해서 어떤 일을 했는지 기록)
+    CREATE TABLE IF NOT EXISTS user_activity_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      user_login_id TEXT NOT NULL,
+      user_role TEXT NOT NULL,
+      activity_type TEXT NOT NULL,
+      quotation_case_id TEXT,
+      case_name TEXT,
+      details TEXT NOT NULL,
+      ip_address TEXT,
+      created_at TEXT NOT NULL
+    );
+
     -- Performance Indexes
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON user_activity_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON user_activity_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_type ON user_activity_logs(activity_type);
     CREATE INDEX IF NOT EXISTS idx_cad_objects_parse_run ON cad_objects(parse_run_id);
     CREATE INDEX IF NOT EXISTS idx_cad_parse_runs_file ON cad_parse_runs(source_file_id);
     CREATE INDEX IF NOT EXISTS idx_uploaded_files_case ON uploaded_files(quotation_case_id);
@@ -523,23 +541,55 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_final_bom_case ON final_bom_items(quotation_case_id);
   `);
 
-  // Seed default data if users table is empty
-  const userCount = db.prepare('SELECT COUNT(*) as cnt FROM users').get() as { cnt: number };
-  if (userCount.cnt === 0) {
-    const now = new Date().toISOString();
-    const adminPassHash = bcrypt.hashSync('admin1234!', 10);
-    const salesPassHash = bcrypt.hashSync('sales1234!', 10);
+  // Ensure 5 demo users (김견적, 이견적, 최견적, 송견적, 박견적) and admin are registered
+  const now = new Date().toISOString();
+  const defaultPassHash = bcrypt.hashSync('123456', 10);
+  const adminPassHash = bcrypt.hashSync('admin1234!', 10);
 
-    // Seed Users
+  const demoUsers = [
+    { id: 'usr_kim', login_id: 'kim', name: '김견적', role: 'SALES_USER' },
+    { id: 'usr_lee', login_id: 'lee', name: '이견적', role: 'SALES_USER' },
+    { id: 'usr_choi', login_id: 'choi', name: '최견적', role: 'SALES_USER' },
+    { id: 'usr_song', login_id: 'song', name: '송견적', role: 'SALES_USER' },
+    { id: 'usr_park', login_id: 'park', name: '박견적', role: 'SALES_USER' },
+  ];
+
+  for (const u of demoUsers) {
     db.prepare(`
       INSERT INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('usr_admin', 'admin', adminPassHash, '시스템 최고관리자', 'SUPER_ADMIN', 1, now, now);
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        password_hash = excluded.password_hash,
+        role = excluded.role,
+        is_active = 1
+    `).run(u.id, u.login_id, defaultPassHash, u.name, u.role, now, now);
 
+    // Grant company access to demo customer companies
     db.prepare(`
-      INSERT INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('usr_sales1', 'sales1', salesPassHash, '김영업 대리', 'SALES_USER', 1, now, now);
+      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
+      VALUES (?, 'comp_001', 'MANAGER', 1)
+    `).run(u.id);
+    db.prepare(`
+      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
+      VALUES (?, 'comp_002', 'MANAGER', 1)
+    `).run(u.id);
+  }
+
+  // Admin user
+  db.prepare(`
+    INSERT INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      password_hash = excluded.password_hash,
+      role = excluded.role,
+      is_active = 1
+  `).run('usr_admin', 'admin', adminPassHash, '시스템 최고관리자', 'SUPER_ADMIN', now, now);
+
+  // Seed default data if companies table is empty
+  const companyCount = db.prepare('SELECT COUNT(*) as cnt FROM companies').get() as { cnt: number };
+  if (companyCount.cnt === 0) {
 
     // Seed Companies
     db.prepare(`

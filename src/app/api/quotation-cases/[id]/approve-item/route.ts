@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 
 export async function POST(
   req: NextRequest,
@@ -100,6 +101,13 @@ export async function POST(
 
     const readiness = (totalApproved + totalExcluded >= totalNorm && totalNorm > 0) ? 'READY_FOR_QUOTE' : 'REVIEW_REQUIRED';
     db.prepare('UPDATE quotation_cases SET quote_readiness = ?, updated_at = ? WHERE id = ?').run(readiness, now, id);
+
+    // Audit log: BOM_APPROVAL
+    await recordActivity(req, session, {
+      activityType: 'BOM_APPROVAL',
+      quotationCaseId: id,
+      details: `BOM 부품 마스터 승인: [${finalName}] 규격 '${finalSpec}', 수량 ${finalQuantity} (${decisionType})`
+    });
 
     return NextResponse.json({ success: true, readiness, finalBomId });
   } catch (error: any) {

@@ -16,6 +16,10 @@ export default function CasesPage() {
   const fetchCases = async () => {
     try {
       const res = await fetch('/api/quotation-cases');
+      if (res.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setCases(data.cases || []);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
 import { processCadFilePipeline } from '@/lib/cad-pipeline';
 
 export async function POST(
@@ -49,6 +50,13 @@ export async function POST(
     if (!res.success) {
       return NextResponse.json({ error: res.error || 'CAD 분석 파이프라인 실행 중 오류 발생' }, { status: 500 });
     }
+
+    // Audit log: ANALYSIS_START
+    await recordActivity(req, session, {
+      activityType: 'ANALYSIS_START',
+      quotationCaseId: id,
+      details: `CAD 도면 자동 분석 실행: 파일 '${targetFile.original_file_name}' (${targetFile.file_type})`
+    });
 
     return NextResponse.json({ success: true, message: '분석이 성공적으로 완료되었습니다.' });
   } catch (error: any) {

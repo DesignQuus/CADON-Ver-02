@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Layers, FileText, CheckCircle2, ShieldAlert, LogOut, UserCheck } from 'lucide-react';
+import { Layers, FileText, CheckCircle2, ShieldAlert, ShieldCheck, LogOut, UserCheck } from 'lucide-react';
 
 export default function Navigation() {
   const [user, setUser] = useState<any>(null);
@@ -65,6 +65,17 @@ export default function Navigation() {
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <span>골든 데이터셋 검증</span>
+            </Link>
+            <Link
+              href="/admin/audit"
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+                pathname.startsWith('/admin/audit')
+                  ? 'bg-blue-50 text-blue-700 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              <span>사용자 활동 로그</span>
             </Link>
           </nav>
         </div>
