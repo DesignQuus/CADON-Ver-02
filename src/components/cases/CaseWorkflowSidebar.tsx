@@ -78,10 +78,10 @@ export default function CaseWorkflowSidebar({
           </div>
           <button
             onClick={() => onSelectTab('ALL')}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer ${
+            className={`btn-hover-effect-tab px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
               selectedTab === 'ALL'
-                ? 'bg-blue-600 text-white shadow-2xs'
-                : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300'
+                ? 'bg-blue-600 text-white shadow-2xs ring-2 ring-blue-300'
+                : 'bg-slate-200/90 text-slate-700 hover:bg-slate-300'
             }`}
           >
             전체 ({counts.total})
@@ -102,7 +102,7 @@ export default function CaseWorkflowSidebar({
           className={`rounded-lg border-2 transition-all p-3 space-y-2.5 ${
             isDragging
               ? 'border-blue-600 bg-blue-50/90 shadow-md scale-[1.01]'
-              : 'border-dashed border-blue-300 bg-gradient-to-b from-blue-50/50 via-white to-slate-50/60 hover:border-blue-500'
+              : 'border-dashed border-blue-300 bg-gradient-to-b from-blue-50/50 via-white to-slate-50/60 hover:border-blue-500 hover:shadow-xs'
           }`}
         >
           <div className="flex items-center justify-between">
@@ -135,30 +135,32 @@ export default function CaseWorkflowSidebar({
             </p>
           </div>
 
-          {/* Action Buttons for Step 1 (Vertical Stacking) */}
-          <div className="space-y-1.5">
+          {/* Action Buttons for Step 1 (Enhanced Hover Highlights) */}
+          <div className="space-y-2 pt-0.5">
             <button
               onClick={onSingleUploadClick}
-              className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs hover:shadow-md"
+              className="btn-hover-effect w-full px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-xs group"
+              title="로컬 PC에서 단일 도면 파일(.dwg, .dxf)을 선택하여 즉시 업로드"
             >
-              <FileCode2 className="w-4 h-4" />
+              <FileCode2 className="w-4 h-4 text-blue-200 group-hover:scale-115 group-hover:rotate-6 transition-transform" />
               <span>도면 파일 선택</span>
             </button>
 
             <button
               onClick={onBatchUploadClick}
-              className="w-full px-3 py-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 rounded text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs hover:border-blue-400"
+              className="btn-hover-effect-secondary w-full px-3 py-2.5 bg-white text-blue-700 border border-blue-300 rounded text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-2xs group"
+              title="여러 장의 도면(ZIP 파일 포함)을 일괄 선택하여 통합/개별 처리"
             >
-              <Folder className="w-4 h-4 text-blue-500" />
+              <Folder className="w-4 h-4 text-blue-500 group-hover:scale-115 group-hover:-translate-y-0.5 transition-transform" />
               <span>다중 도면 일괄 등록</span>
             </button>
 
             <button
               onClick={() => alert('기존 유사 견적을 복제하여 신규 도면으로 등록하는 기능입니다. (준비중)')}
-              className="w-full px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded text-[11px] font-semibold transition-all flex items-center justify-between cursor-pointer group"
+              className="btn-hover-effect-secondary w-full px-3 py-1.5 bg-slate-50 text-slate-600 border border-slate-200 rounded text-[11px] font-semibold transition-all flex items-center justify-between cursor-pointer group"
             >
               <span className="flex items-center space-x-1.5">
-                <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:scale-110 transition-transform" />
+                <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:scale-115 transition-transform" />
                 <span>기존 유사 견적 복제</span>
               </span>
               <span className="text-[9px] text-slate-400">준비중</span>
@@ -180,14 +182,14 @@ export default function CaseWorkflowSidebar({
           <div className="space-y-1 pt-1">
             <button
               onClick={() => onSelectTab('PENDING')}
-              className={`w-full px-2.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+              className={`btn-hover-effect-tab w-full px-2.5 py-2 rounded text-xs font-semibold transition-all flex items-center justify-between cursor-pointer border ${
                 selectedTab === 'PENDING'
-                  ? 'bg-amber-500 text-white font-bold shadow-2xs'
-                  : 'text-slate-700 hover:bg-slate-100'
+                  ? 'bg-amber-500 text-white font-bold shadow-xs border-amber-600 ring-2 ring-amber-300/50'
+                  : 'text-slate-700 hover:bg-amber-50 hover:text-amber-900 border-transparent hover:border-amber-200'
               }`}
             >
-              <span className="flex items-center space-x-1.5">
-                <Clock className="w-3.5 h-3.5" />
+              <span className="flex items-center space-x-2">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
                 <span>도면 대기 / 분석 대기</span>
               </span>
               <span
@@ -215,14 +217,14 @@ export default function CaseWorkflowSidebar({
           <div className="space-y-1 pt-1">
             <button
               onClick={() => onSelectTab('ANALYZED')}
-              className={`w-full px-2.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+              className={`btn-hover-effect-tab w-full px-2.5 py-2 rounded text-xs font-semibold transition-all flex items-center justify-between cursor-pointer border ${
                 selectedTab === 'ANALYZED'
-                  ? 'bg-blue-600 text-white font-bold shadow-2xs'
-                  : 'text-slate-700 hover:bg-slate-100'
+                  ? 'bg-blue-600 text-white font-bold shadow-xs border-blue-700 ring-2 ring-blue-300/50'
+                  : 'text-slate-700 hover:bg-blue-50 hover:text-blue-900 border-transparent hover:border-blue-200'
               }`}
             >
-              <span className="flex items-center space-x-1.5">
-                <Cpu className="w-3.5 h-3.5" />
+              <span className="flex items-center space-x-2">
+                <Cpu className="w-3.5 h-3.5 text-blue-600" />
                 <span>BOM 추출 / 단가 매칭중</span>
               </span>
               <span
@@ -247,17 +249,17 @@ export default function CaseWorkflowSidebar({
             </div>
           </div>
 
-          <div className="space-y-1 pt-1">
+          <div className="space-y-1.5 pt-1">
             <button
               onClick={() => onSelectTab('READY_FOR_QUOTE')}
-              className={`w-full px-2.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+              className={`btn-hover-effect-tab w-full px-2.5 py-2 rounded text-xs font-semibold transition-all flex items-center justify-between cursor-pointer border ${
                 selectedTab === 'READY_FOR_QUOTE'
-                  ? 'bg-emerald-600 text-white font-bold shadow-2xs'
-                  : 'text-slate-700 hover:bg-slate-100'
+                  ? 'bg-emerald-600 text-white font-bold shadow-xs border-emerald-700 ring-2 ring-emerald-300/50'
+                  : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 border-transparent hover:border-emerald-200'
               }`}
             >
-              <span className="flex items-center space-x-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="flex items-center space-x-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 <span>견적 준비 완료 (산출완료)</span>
               </span>
               <span
@@ -274,14 +276,14 @@ export default function CaseWorkflowSidebar({
               <>
                 <button
                   onClick={() => onSelectTab('PRIVATE_APPROVAL')}
-                  className={`w-full px-2.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  className={`btn-hover-effect-tab w-full px-2.5 py-2 rounded text-xs font-semibold transition-all flex items-center justify-between cursor-pointer border ${
                     selectedTab === 'PRIVATE_APPROVAL'
-                      ? 'bg-red-600 text-white font-bold shadow-2xs'
-                      : 'text-red-700 hover:bg-red-50'
+                      ? 'bg-red-600 text-white font-bold shadow-xs border-red-700 ring-2 ring-red-300/50'
+                      : 'text-red-700 hover:bg-red-50 border-transparent hover:border-red-200'
                   }`}
                 >
-                  <span className="flex items-center space-x-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="flex items-center space-x-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-red-600" />
                     <span>비공개 결재 대기</span>
                   </span>
                   <span
@@ -295,13 +297,13 @@ export default function CaseWorkflowSidebar({
 
                 <button
                   onClick={() => onSelectTab('SECURE_VAULT')}
-                  className={`w-full px-2.5 py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  className={`btn-hover-effect-tab w-full px-2.5 py-2 rounded text-xs font-semibold transition-all flex items-center justify-between cursor-pointer border ${
                     selectedTab === 'SECURE_VAULT'
-                      ? 'bg-slate-800 text-white font-bold shadow-2xs'
-                      : 'text-slate-700 hover:bg-slate-100'
+                      ? 'bg-slate-800 text-white font-bold shadow-xs border-slate-900 ring-2 ring-slate-400/50'
+                      : 'text-slate-700 hover:bg-slate-100 border-transparent hover:border-slate-300'
                   }`}
                 >
-                  <span className="flex items-center space-x-1.5">
+                  <span className="flex items-center space-x-2">
                     <Lock className="w-3.5 h-3.5 text-amber-500" />
                     <span>🔒 보안 견적함</span>
                   </span>
@@ -334,13 +336,14 @@ export default function CaseWorkflowSidebar({
               onClick={() => {
                 alert('선택된 견적건들의 표준 엑셀 견적서를 일괄 ZIP 압축 다운로드합니다. (준비중)');
               }}
-              className="w-full px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-xs font-bold transition-all flex items-center justify-between cursor-pointer group"
+              className="btn-hover-effect-secondary w-full px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded text-xs font-bold transition-all flex items-center justify-between cursor-pointer group"
+              title="산출 완료된 견적건들의 엑셀 견적서를 일괄 다운로드"
             >
-              <span className="flex items-center space-x-1.5">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+              <span className="flex items-center space-x-2">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600 group-hover:scale-115 transition-transform" />
                 <span>표준 엑셀 일괄 발행</span>
               </span>
-              <DownloadCloud className="w-3.5 h-3.5 text-emerald-600" />
+              <DownloadCloud className="w-4 h-4 text-emerald-600 group-hover:translate-y-0.5 transition-transform" />
             </button>
           </div>
         </div>

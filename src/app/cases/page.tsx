@@ -497,10 +497,10 @@ export default function CasesPage() {
 
           <Link
             href={`/cases/${recentCase.id}`}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-[3px] text-xs font-extrabold shadow-sm transition-all flex items-center justify-center space-x-1.5 shrink-0 self-start md:self-auto cursor-pointer"
+            className="btn-hover-effect px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-[3px] text-xs font-extrabold shadow-sm transition-all flex items-center justify-center space-x-2 shrink-0 self-start md:self-auto cursor-pointer group"
           >
             <span>이어서 견적 작업하기</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
       )}
@@ -513,7 +513,7 @@ export default function CasesPage() {
           <div className="flex flex-wrap items-center gap-1.5 pb-1 lg:pb-0">
             <button
               onClick={() => setSelectedTab('ALL')}
-              className={`px-3 py-1.5 rounded-[3px] text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+              className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 ${
                 selectedTab === 'ALL'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -523,7 +523,7 @@ export default function CasesPage() {
             </button>
             <button
               onClick={() => setSelectedTab('READY_FOR_QUOTE')}
-              className={`px-3 py-1.5 rounded-[3px] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center space-x-1 ${
+              className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
                 selectedTab === 'READY_FOR_QUOTE'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700'
@@ -533,7 +533,7 @@ export default function CasesPage() {
             </button>
             <button
               onClick={() => setSelectedTab('ANALYZED')}
-              className={`px-3 py-1.5 rounded-[3px] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center space-x-1 ${
+              className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
                 selectedTab === 'ANALYZED'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700'
@@ -543,7 +543,7 @@ export default function CasesPage() {
             </button>
             <button
               onClick={() => setSelectedTab('PENDING')}
-              className={`px-3 py-1.5 rounded-[3px] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center space-x-1 ${
+              className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
                 selectedTab === 'PENDING'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-700'
@@ -555,7 +555,7 @@ export default function CasesPage() {
               <>
                 <button
                   onClick={() => setSelectedTab('PRIVATE_APPROVAL')}
-                  className={`px-3 py-1.5 rounded-[3px] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center space-x-1 ${
+                  className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
                     selectedTab === 'PRIVATE_APPROVAL'
                       ? 'bg-red-600 text-white shadow-xs'
                       : 'bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700'
@@ -565,7 +565,7 @@ export default function CasesPage() {
                 </button>
                 <button
                   onClick={() => setSelectedTab('SECURE_VAULT')}
-                  className={`px-3 py-1.5 rounded-[3px] text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center space-x-1 ${
+                  className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
                     selectedTab === 'SECURE_VAULT'
                       ? 'bg-slate-800 text-white shadow-xs'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900'
@@ -647,7 +647,7 @@ export default function CasesPage() {
               <button
                 onClick={() => setViewMode('TABLE')}
                 title="대량 견적에 최적화된 고밀도 테이블 목록"
-                className={`flex items-center space-x-1 px-3 py-1.5 rounded-[2px] text-xs font-bold transition-all cursor-pointer ${
+                className={`btn-hover-effect-tab flex items-center space-x-1 px-3 py-1.5 rounded-[2px] text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'TABLE'
                     ? 'bg-white text-blue-600 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -659,7 +659,7 @@ export default function CasesPage() {
               <button
                 onClick={() => setViewMode('CARD')}
                 title="카드 그리드 형식"
-                className={`flex items-center space-x-1 px-3 py-1.5 rounded-[2px] text-xs font-bold transition-all cursor-pointer ${
+                className={`btn-hover-effect-tab flex items-center space-x-1 px-3 py-1.5 rounded-[2px] text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'CARD'
                     ? 'bg-white text-blue-600 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -935,10 +935,10 @@ export default function CasesPage() {
                           <td className="py-3 px-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <Link
                               href={`/cases/${c.id}`}
-                              className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-[3px] bg-slate-100 hover:bg-blue-600 text-slate-800 hover:text-white font-bold text-xs transition-colors shadow-2xs"
+                              className="btn-hover-effect-tab inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-[3px] bg-slate-100 hover:bg-blue-600 text-slate-800 hover:text-white font-bold text-xs transition-all shadow-2xs group"
                             >
                               <span>상세</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
+                              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                             </Link>
                           </td>
                         </tr>
