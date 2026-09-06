@@ -379,81 +379,6 @@ export default function CasesPage() {
         className="hidden"
       />
 
-      {/* Zone 2: 3-Step BOM Automation Guide & Key Metrics (Slim & Compact) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* Step 1 */}
-        <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-blue-300 transition-colors flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center shrink-0">
-              1
-            </span>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <h3 className="font-extrabold text-slate-900 text-xs tracking-tight">CAD DWG 자동 분석</h3>
-                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">BOM 검출</span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium line-clamp-1">
-                외곽선·표제란·BOM 자동 검출 및 WebGL 변환
-              </p>
-            </div>
-          </div>
-          <div className="text-right shrink-0 pl-2">
-            <div className="text-[10px] font-semibold text-slate-400">분석 도면</div>
-            <div className="font-mono font-extrabold text-sm text-slate-900 leading-tight">
-              {totalDrawingsSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">장</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Step 2 */}
-        <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-emerald-300 transition-colors flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 text-xs font-extrabold flex items-center justify-center shrink-0">
-              2
-            </span>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <h3 className="font-extrabold text-slate-900 text-xs tracking-tight">AI 단가 최적화 매칭</h3>
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded">단가 매칭</span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium line-clamp-1">
-                사내 마스터 단가 자동 조회 및 1-클릭 일괄 적용
-              </p>
-            </div>
-          </div>
-          <div className="text-right shrink-0 pl-2">
-            <div className="text-[10px] font-semibold text-slate-400">정규화 BOM</div>
-            <div className="font-mono font-extrabold text-sm text-emerald-600 leading-tight">
-              {totalBomItemsSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">개</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Step 3 */}
-        <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-teal-300 transition-colors flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <span className="w-6 h-6 rounded bg-teal-100 text-teal-700 text-xs font-extrabold flex items-center justify-center shrink-0">
-              3
-            </span>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <h3 className="font-extrabold text-slate-900 text-xs tracking-tight">표준 엑셀 견적서 발행</h3>
-                <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.2 rounded">엑셀 다운로드</span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium line-clamp-1">
-                인쇄용 표준 화이트 양식 및 공인 엑셀 서식
-              </p>
-            </div>
-          </div>
-          <div className="text-right shrink-0 pl-2">
-            <div className="text-[10px] font-semibold text-slate-400">누적 견적 총액</div>
-            <div className="font-mono font-extrabold text-sm text-teal-700 leading-tight">
-              {totalQuotedAmountSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">원</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Main Two-Column Workflow Layout */}
       <div className="flex flex-col lg:flex-row gap-5 items-start">
         {/* Left Column: Vertical Workflow Pipeline Sidebar (With Integrated Drag & Drop Zone) */}
@@ -478,8 +403,83 @@ export default function CasesPage() {
         />
 
         {/* Right Column: Main Workbench */}
-        <div className="flex-1 min-w-0 space-y-4 w-full">
-{/* Zone 3: Quick Resume Widget */}
+        <div className="flex-1 min-w-0 space-y-3.5 w-full">
+          {/* Zone 2: 3-Step BOM Automation Guide & Key Metrics (Aligned with Right Workbench Grid) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Step 1 */}
+            <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-blue-300 transition-colors flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center shrink-0">
+                  1
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-1.5">
+                    <h3 className="font-extrabold text-slate-900 text-xs tracking-tight truncate">CAD DWG 자동 분석</h3>
+                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded shrink-0">BOM 검출</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium truncate">
+                    외곽선·표제란·BOM 자동 검출 및 WebGL 변환
+                  </p>
+                </div>
+              </div>
+              <div className="text-right shrink-0 pl-2">
+                <div className="text-[10px] font-semibold text-slate-400">분석 도면</div>
+                <div className="font-mono font-extrabold text-sm text-slate-900 leading-tight">
+                  {totalDrawingsSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">장</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-emerald-300 transition-colors flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 text-xs font-extrabold flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-1.5">
+                    <h3 className="font-extrabold text-slate-900 text-xs tracking-tight truncate">AI 단가 최적화 매칭</h3>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded shrink-0">단가 매칭</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium truncate">
+                    사내 마스터 단가 자동 조회 및 1-클릭 일괄 적용
+                  </p>
+                </div>
+              </div>
+              <div className="text-right shrink-0 pl-2">
+                <div className="text-[10px] font-semibold text-slate-400">정규화 BOM</div>
+                <div className="font-mono font-extrabold text-sm text-emerald-600 leading-tight">
+                  {totalBomItemsSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">개</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-teal-300 transition-colors flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <span className="w-6 h-6 rounded bg-teal-100 text-teal-700 text-xs font-extrabold flex items-center justify-center shrink-0">
+                  3
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-1.5">
+                    <h3 className="font-extrabold text-slate-900 text-xs tracking-tight truncate">표준 엑셀 견적서 발행</h3>
+                    <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.2 rounded shrink-0">엑셀 다운로드</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium truncate">
+                    인쇄용 표준 화이트 양식 및 공인 엑셀 서식
+                  </p>
+                </div>
+              </div>
+              <div className="text-right shrink-0 pl-2">
+                <div className="text-[10px] font-semibold text-slate-400">누적 견적 총액</div>
+                <div className="font-mono font-extrabold text-sm text-teal-700 leading-tight">
+                  {totalQuotedAmountSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">원</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Zone 3: Quick Resume Widget */}
       {recentCase && (
         <div className="bg-slate-900 text-white rounded-[4px] p-5 sm:p-6 shadow-md border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start space-x-4">
