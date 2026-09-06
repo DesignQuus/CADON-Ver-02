@@ -105,6 +105,11 @@ interface CadViewerProps {
   latestQuote?: any;
   onToggleQuoteItem?: (drawingNos: string[], isIncluded: boolean) => void;
   onToggleAllQuoteDrawings?: (isIncluded: boolean) => void;
+  selectedFile?: any;
+  onStartAnalysis?: (fileId: string) => void;
+  isAnalyzing?: boolean;
+  allFiles?: any[];
+  onSelectFile?: (fileId: string) => void;
 }
 
 export default function CadViewer({
@@ -121,7 +126,12 @@ export default function CadViewer({
   quoteItems = [],
   latestQuote,
   onToggleQuoteItem,
-  onToggleAllQuoteDrawings
+  onToggleAllQuoteDrawings,
+  selectedFile,
+  onStartAnalysis,
+  isAnalyzing = false,
+  allFiles = [],
+  onSelectFile
 }: CadViewerProps) {
   // Mode switcher: 'CAD' (2D Vector Viewer) vs 'SHEET' (Full-width Excel Grid)
   const [viewMode, setViewMode] = useState<'CAD' | 'SHEET'>('CAD');
@@ -148,6 +158,7 @@ export default function CadViewer({
 
   // Settings Modal states
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
   const [fastviewPathInput, setFastviewPathInput] = useState('');
   const [autocadPathInput, setAutocadPathInput] = useState('');
   const [detectedFastviewList, setDetectedFastviewList] = useState<string[]>([]);
@@ -1325,6 +1336,87 @@ export default function CadViewer({
         </div>
       )}
 
+      {/* 📊 System Stats Modal */}
+      {showStatsModal && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-fuchsia-600/20 border border-fuchsia-500/40 flex items-center justify-center text-fuchsia-400">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">시스템 종합 통계 (최고관리자용)</h3>
+                  <p className="text-[11px] text-slate-400">전체 견적 담당자 활동 및 시스템 리소스 현황</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStatsModal(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  <div className="text-[11px] text-slate-400 mb-1">월간 도면 분석량</div>
+                  <div className="text-2xl font-black text-white flex items-end gap-1.5">
+                    12,458 <span className="text-sm font-bold text-emerald-400 mb-0.5">+15%</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">지난 달 대비 상승</div>
+                </div>
+                <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  <div className="text-[11px] text-slate-400 mb-1">진행 중인 견적 프로젝트</div>
+                  <div className="text-2xl font-black text-white flex items-end gap-1.5">
+                    29 <span className="text-sm font-bold text-blue-400 mb-0.5">건</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">담당자 5명 합계</div>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <div className="flex justify-between items-end mb-1">
+                  <span className="font-bold text-slate-300">서버 스토리지 및 자원 사용률</span>
+                  <span className="font-mono text-cyan-400 font-bold">78%</span>
+                </div>
+                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
+                  <div className="bg-cyan-500 h-full w-[45%]" title="DWG 원본 보관"></div>
+                  <div className="bg-blue-500 h-full w-[20%]" title="파생 데이터 (DXF/JSON)"></div>
+                  <div className="bg-amber-500 h-full w-[13%]" title="시스템 로그"></div>
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                  <span>사용중: 1.56 TB</span>
+                  <span>전체: 2.0 TB</span>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <div className="p-3 bg-fuchsia-950/30 border border-fuchsia-900/50 rounded-xl">
+                  <div className="text-[11px] text-fuchsia-300/80 mb-0.5">월간 누적 견적 금액 요약</div>
+                  <div className="text-lg font-bold text-fuchsia-100 font-mono">
+                    ₩ 4,520,150,000
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end px-6 py-4 border-t border-slate-800 bg-slate-950 shrink-0">
+              <button
+                onClick={() => setShowStatsModal(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Professional Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-800 text-xs">
         {/* Left: Sidebar Toggle + Mode Switcher Tabs */}
@@ -1375,6 +1467,18 @@ export default function CadViewer({
               </span>
             </button>
           </div>
+
+          {/* Active File Indicator */}
+          {selectedFile && (
+            <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 bg-slate-950/90 border border-slate-800 rounded-xl text-xs text-slate-300 shadow-xs">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${drawings.length > 0 ? 'bg-emerald-400 ring-2 ring-emerald-400/30' : 'bg-amber-400 animate-pulse'}`} />
+              <span className="text-slate-400">선택 파일:</span>
+              <span className="font-bold text-white truncate max-w-[170px]">{selectedFile.original_file_name}</span>
+              <span className="px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-800/60 font-mono text-[10px]">
+                {selectedFile.file_type || 'CAD'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Right: Actions, Dropdown & Controls */}
@@ -1415,6 +1519,16 @@ export default function CadViewer({
             >
               <Settings className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <span className="whitespace-nowrap">CAD 설정</span>
+            </button>
+
+            {/* 📊 System Stats Modal Button */}
+            <button
+              onClick={() => setShowStatsModal(true)}
+              className="px-2.5 py-1.5 rounded-lg border border-fuchsia-500/50 bg-fuchsia-950/70 hover:bg-fuchsia-900 text-fuchsia-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
+              title="최고관리자용 시스템 통계 요약 보기"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" />
+              <span className="whitespace-nowrap">시스템 통계</span>
             </button>
 
             {/* 📁 Open Containing Desktop Folder in Windows Explorer */}
@@ -1706,6 +1820,8 @@ export default function CadViewer({
             setWebGlFocusBbox(null);
             setHighlightDrawingIds([]);
           }}
+          activeFileId={selectedFile?.id}
+          reloadKey={`${selectedFile?.id || ''}_${drawings.length}`}
         />
 
         {/* 🧭 Duplicate Drawings Quick Navigator Floating Bar */}

@@ -17,15 +17,40 @@ export async function GET(
 
   const { id } = await params;
   const derivedDir = getStorageSubdir('derived');
+  const localDerived = path.join(process.cwd(), 'storage', 'derived');
+  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
+  const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
+  const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
+  const egdeskDerived = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'storage', 'derived');
 
-  let targetBin = path.join(derivedDir, `${id}__cad_webgl.bin`);
-  if (!fs.existsSync(targetBin)) {
-    const fallbackBin = path.join(process.cwd(), 'storage', 'derived', `${id}__cad_webgl.bin`);
-    if (fs.existsSync(fallbackBin)) targetBin = fallbackBin;
+  const candidates = [
+    path.join(derivedDir, `${id}__cad_webgl.bin`),
+    path.join(localDerived, `${id}__cad_webgl.bin`),
+    path.join(egdeskDerived, `${id}__cad_webgl.bin`)
+  ];
+
+  let targetBin = '';
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      targetBin = c;
+      break;
+    }
   }
 
-  // Auto-generate if missing
-  if (!fs.existsSync(targetBin)) {
+  // Cross-sync if found in one location
+  if (targetBin) {
+    for (const c of candidates) {
+      if (!fs.existsSync(c)) {
+        try {
+          fs.mkdirSync(path.dirname(c), { recursive: true });
+          fs.copyFileSync(targetBin, c);
+        } catch {}
+      }
+    }
+  }
+
+  // Auto-generate if missing in all locations
+  if (!targetBin || !fs.existsSync(targetBin)) {
     const sourceFile = db.prepare(`
       SELECT * FROM uploaded_files
       WHERE quotation_case_id = ? AND file_type IN ('DXF', 'DWG')
@@ -36,13 +61,27 @@ export async function GET(
     if (sourceFile && sourceFile.storage_path) {
       const srcPath = resolveStoragePath(sourceFile.storage_path);
       if (fs.existsSync(srcPath)) {
+        const destBin = candidates[0];
+        fs.mkdirSync(path.dirname(destBin), { recursive: true });
         const pyScript = path.join(process.cwd(), 'scripts', 'cad_webgl_exporter.py');
-        spawnSync('python', [pyScript, srcPath, targetBin]);
+        spawnSync('python', [pyScript, srcPath, destBin], { timeout: 30000 });
+        if (fs.existsSync(destBin)) {
+          targetBin = destBin;
+          // Copy to other locations as well
+          for (const c of candidates) {
+            if (c !== destBin && !fs.existsSync(c)) {
+              try {
+                fs.mkdirSync(path.dirname(c), { recursive: true });
+                fs.copyFileSync(destBin, c);
+              } catch {}
+            }
+          }
+        }
       }
     }
   }
 
-  if (!fs.existsSync(targetBin)) {
+  if (!targetBin || !fs.existsSync(targetBin)) {
     return NextResponse.json({ error: 'WebGL CAD 바이너리 데이터를 찾을 수 없습니다.' }, { status: 404 });
   }
 

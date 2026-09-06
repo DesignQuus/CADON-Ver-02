@@ -37,7 +37,7 @@ export default function Navigation() {
               <span className="font-bold text-slate-900 text-lg leading-tight tracking-tight block">
                 CADON-BOM <span className="text-blue-600 font-extrabold">AI</span>
               </span>
-              <span className="text-[10px] text-slate-500 font-medium tracking-wider uppercase block">
+              <span className="text-[11px] text-slate-500 font-semibold tracking-wider uppercase block">
                 Server POC Ver-02
               </span>
             </div>
@@ -87,11 +87,11 @@ export default function Navigation() {
                 <div className="text-sm font-semibold text-slate-800 flex items-center justify-end space-x-1">
                   <span>{user.name}</span>
                   {user.role === 'SUPER_ADMIN' ? (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
                       최고관리자
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
                       영업담당
                     </span>
                   )}

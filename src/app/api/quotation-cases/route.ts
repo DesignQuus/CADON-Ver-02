@@ -9,25 +9,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
   }
 
+  const baseSelect = `
+    SELECT qc.*, c.company_name, c.company_code, p.project_name, p.project_code,
+      (SELECT COUNT(*) FROM uploaded_files uf WHERE uf.quotation_case_id = qc.id) as files_count,
+      (SELECT COUNT(*) FROM drawings d WHERE d.quotation_case_id = qc.id) as drawings_count,
+      (SELECT COUNT(*) FROM final_bom_items fbi WHERE fbi.quotation_case_id = qc.id) as bom_items_count,
+      (SELECT q.total_amount FROM quotes q WHERE q.quotation_case_id = qc.id ORDER BY q.quote_version DESC LIMIT 1) as quote_total_amount
+    FROM quotation_cases qc
+    JOIN companies c ON qc.company_id = c.id
+    JOIN projects p ON qc.project_id = p.id
+  `;
+
   let cases;
   if (session.role === 'SUPER_ADMIN') {
-    cases = db.prepare(`
-      SELECT qc.*, c.company_name, c.company_code, p.project_name, p.project_code
-      FROM quotation_cases qc
-      JOIN companies c ON qc.company_id = c.id
-      JOIN projects p ON qc.project_id = p.id
-      ORDER BY qc.created_at DESC
-    `).all();
+    cases = db.prepare(`${baseSelect} ORDER BY qc.created_at DESC`).all();
   } else {
     cases = db.prepare(`
-      SELECT qc.*, c.company_name, c.company_code, p.project_name, p.project_code
-      FROM quotation_cases qc
-      JOIN companies c ON qc.company_id = c.id
-      JOIN projects p ON qc.project_id = p.id
+      ${baseSelect}
       JOIN user_company_access uca ON uca.company_id = c.id
       WHERE uca.user_id = ? AND uca.is_active = 1
+      AND (qc.visibility = 'SHARED' OR qc.created_by_user_id = ?)
       ORDER BY qc.created_at DESC
-    `).all(session.userId);
+    `).all(session.userId, session.userId);
   }
 
   return NextResponse.json({ cases });

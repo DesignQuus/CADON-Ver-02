@@ -38,7 +38,7 @@ const DEMO_USERS: DemoUser[] = [
     position: '과장',
     role: 'SALES_USER',
     color: 'border-blue-500 bg-blue-50/50 text-blue-700',
-    defaultPass: '123456'
+    defaultPass: 'Cadon1234!@'
   },
   {
     id: 'usr_lee',
@@ -48,7 +48,7 @@ const DEMO_USERS: DemoUser[] = [
     position: '대리',
     role: 'SALES_USER',
     color: 'border-emerald-500 bg-emerald-50/50 text-emerald-700',
-    defaultPass: '123456'
+    defaultPass: 'Cadon1234!@'
   },
   {
     id: 'usr_choi',
@@ -58,7 +58,7 @@ const DEMO_USERS: DemoUser[] = [
     position: '차장',
     role: 'SALES_USER',
     color: 'border-indigo-500 bg-indigo-50/50 text-indigo-700',
-    defaultPass: '123456'
+    defaultPass: 'Cadon1234!@'
   },
   {
     id: 'usr_song',
@@ -68,7 +68,7 @@ const DEMO_USERS: DemoUser[] = [
     position: '주임',
     role: 'SALES_USER',
     color: 'border-purple-500 bg-purple-50/50 text-purple-700',
-    defaultPass: '123456'
+    defaultPass: 'Cadon1234!@'
   },
   {
     id: 'usr_park',
@@ -78,13 +78,13 @@ const DEMO_USERS: DemoUser[] = [
     position: '대리',
     role: 'SALES_USER',
     color: 'border-amber-500 bg-amber-50/50 text-amber-700',
-    defaultPass: '123456'
+    defaultPass: 'Cadon1234!@'
   },
 ];
 
 export default function LoginPage() {
   const [selectedUser, setSelectedUser] = useState<DemoUser>(DEMO_USERS[0]);
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('Cadon1234!@');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -131,10 +131,10 @@ export default function LoginPage() {
       position: 'SUPER_ADMIN',
       role: 'SUPER_ADMIN',
       color: 'border-purple-600 bg-purple-50 text-purple-800',
-      defaultPass: 'admin1234!'
+      defaultPass: 'Cadon1234!@'
     };
     setSelectedUser(adminUser);
-    setPassword('admin1234!');
+    setPassword('Cadon1234!@');
   };
 
   return (
@@ -249,7 +249,7 @@ export default function LoginPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-slate-700">
-                2단계: 비밀번호 입력 (샘플 기본값: <span className="font-mono text-blue-600 font-bold">123456</span>)
+                2단계: 비밀번호 입력 (샘플 기본값: <span className="font-mono text-blue-600 font-bold">Cadon1234!@</span>)
               </label>
               <button
                 type="button"
@@ -266,7 +266,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="비밀번호 입력 (기본: 123456)"
+                placeholder="비밀번호 입력 (기본: Cadon1234!@)"
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 font-mono"
               />
             </div>

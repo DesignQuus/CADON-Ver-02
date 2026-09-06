@@ -17,15 +17,40 @@ export async function GET(
 
   const { id } = await params;
   const derivedDir = getStorageSubdir('derived');
+  const localDerived = path.join(process.cwd(), 'storage', 'derived');
+  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
+  const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
+  const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
+  const egdeskDerived = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'storage', 'derived');
 
-  let targetTxt = path.join(derivedDir, `${id}__cad_texts.json`);
-  if (!fs.existsSync(targetTxt)) {
-    const fallbackTxt = path.join(process.cwd(), 'storage', 'derived', `${id}__cad_texts.json`);
-    if (fs.existsSync(fallbackTxt)) targetTxt = fallbackTxt;
+  const candidates = [
+    path.join(derivedDir, `${id}__cad_texts.json`),
+    path.join(localDerived, `${id}__cad_texts.json`),
+    path.join(egdeskDerived, `${id}__cad_texts.json`)
+  ];
+
+  let targetTxt = '';
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      targetTxt = c;
+      break;
+    }
   }
 
-  // Auto-generate if missing
-  if (!fs.existsSync(targetTxt)) {
+  // Cross-sync if found in one location
+  if (targetTxt) {
+    for (const c of candidates) {
+      if (!fs.existsSync(c)) {
+        try {
+          fs.mkdirSync(path.dirname(c), { recursive: true });
+          fs.copyFileSync(targetTxt, c);
+        } catch {}
+      }
+    }
+  }
+
+  // Auto-generate if missing in all locations
+  if (!targetTxt || !fs.existsSync(targetTxt)) {
     const sourceFile = db.prepare(`
       SELECT * FROM uploaded_files
       WHERE quotation_case_id = ? AND file_type IN ('DXF', 'DWG')
@@ -37,13 +62,26 @@ export async function GET(
       const srcPath = resolveStoragePath(sourceFile.storage_path);
       if (fs.existsSync(srcPath)) {
         const pyScript = path.join(process.cwd(), 'scripts', 'cad_webgl_exporter.py');
-        const targetBin = path.join(derivedDir, `${id}__cad_webgl.bin`);
-        spawnSync('python', [pyScript, srcPath, targetBin]);
+        const destBin = path.join(candidates[0].replace('__cad_texts.json', '__cad_webgl.bin'));
+        fs.mkdirSync(path.dirname(destBin), { recursive: true });
+        spawnSync('python', [pyScript, srcPath, destBin], { timeout: 30000 });
+        if (fs.existsSync(candidates[0])) {
+          targetTxt = candidates[0];
+          // Copy to other locations as well
+          for (const c of candidates) {
+            if (c !== candidates[0] && !fs.existsSync(c)) {
+              try {
+                fs.mkdirSync(path.dirname(c), { recursive: true });
+                fs.copyFileSync(candidates[0], c);
+              } catch {}
+            }
+          }
+        }
       }
     }
   }
 
-  if (!fs.existsSync(targetTxt)) {
+  if (!targetTxt || !fs.existsSync(targetTxt)) {
     return NextResponse.json({ texts: [] });
   }
 

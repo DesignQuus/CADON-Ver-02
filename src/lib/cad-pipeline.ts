@@ -123,7 +123,23 @@ export async function processCadFilePipeline(
 
   const webglBinName = `${quotationCaseId}__cad_webgl.bin`;
   const webglBinPath = path.join(derivedStorageDir, webglBinName);
-  runPythonScript('cad_webgl_exporter.py', [absoluteDxfPath, webglBinPath])
+  const webglPromise = runPythonScript('cad_webgl_exporter.py', [absoluteDxfPath, webglBinPath])
+    .then(() => {
+      // Synchronize to workspace storage/derived as well
+      const localDerived = path.join(process.cwd(), 'storage', 'derived');
+      if (fs.existsSync(localDerived) && localDerived !== derivedStorageDir) {
+        try {
+          fs.copyFileSync(webglBinPath, path.join(localDerived, webglBinName));
+          const txtName = webglBinName.replace('__cad_webgl.bin', '__cad_texts.json');
+          const srcTxt = path.join(derivedStorageDir, txtName);
+          if (fs.existsSync(srcTxt)) {
+            fs.copyFileSync(srcTxt, path.join(localDerived, txtName));
+          }
+        } catch (copyErr) {
+          console.warn('WebGL storage sync warning:', copyErr);
+        }
+      }
+    })
     .catch((webglErr) => console.warn('WebGL binary export warning:', webglErr));
 
   const svgFileName = `${quotationCaseId}__hd_vector.svg`;
@@ -369,6 +385,13 @@ export async function processCadFilePipeline(
     SET status = 'ANALYZED', quote_readiness = 'REVIEW_REQUIRED', updated_at = ?
     WHERE id = ?
   `).run(now, quotationCaseId);
+
+  // Ensure WebGL binary & texts generation has finished before returning
+  try {
+    await webglPromise;
+  } catch (err) {
+    console.warn('WebGL promise wait warning:', err);
+  }
 
   // Background Note: svgPromise continues running in parallel and saves VECTOR_SVG file upon completion
   return { success: true };

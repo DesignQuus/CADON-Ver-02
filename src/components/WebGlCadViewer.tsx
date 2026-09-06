@@ -14,6 +14,8 @@ interface WebGlCadViewerProps {
   selectedDrawingIdx?: number;
   highlightDrawingIds?: string[];
   onResetFocus?: () => void;
+  reloadKey?: string | number;
+  activeFileId?: string;
 }
 
 export default function WebGlCadViewer({
@@ -25,7 +27,9 @@ export default function WebGlCadViewer({
   showTexts = true,
   selectedDrawingIdx = -1,
   highlightDrawingIds = [],
-  onResetFocus
+  onResetFocus,
+  reloadKey,
+  activeFileId
 }: WebGlCadViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -287,14 +291,22 @@ export default function WebGlCadViewer({
   }, []);
 
   // 2. Fetch and Load Ultra-Fast Binary WebGL CAD Data
-  const loadBinaryData = useCallback(async () => {
+  const loadBinaryData = useCallback(async (retryAttempt = 0) => {
     if (!caseId) return;
     setLoading(true);
     setErrorMsg(null);
 
     try {
-      const res = await fetch(`/api/quotation-cases/${caseId}/webgl-binary?v=${Date.now()}`);
+      const url = activeFileId
+        ? `/api/quotation-cases/${caseId}/webgl-binary?fileId=${encodeURIComponent(activeFileId)}&v=${Date.now()}`
+        : `/api/quotation-cases/${caseId}/webgl-binary?v=${Date.now()}`;
+      const res = await fetch(url);
       if (!res.ok) {
+        if (res.status === 404 && retryAttempt < 3) {
+          // Auto retry up to 3 times with 1.2s delay for in-flight exporter
+          await new Promise(resolve => setTimeout(resolve, 1200));
+          return loadBinaryData(retryAttempt + 1);
+        }
         throw new Error(`CAD 바이너리 로드 실패 (${res.status})`);
       }
 
@@ -394,28 +406,43 @@ export default function WebGlCadViewer({
       setErrorMsg(err.message || '도면 로드 중 오류가 발생했습니다.');
       setLoading(false);
     }
-  }, [caseId]);
+  }, [caseId, activeFileId]);
 
   // 2.1 Fetch CAD Texts for 2D Canvas Overlay
-  const loadTexts = useCallback(async () => {
+  const loadTexts = useCallback(async (retryAttempt = 0) => {
     if (!caseId) return;
     try {
-      const res = await fetch(`/api/quotation-cases/${caseId}/webgl-texts?v=${Date.now()}`);
+      const url = activeFileId
+        ? `/api/quotation-cases/${caseId}/webgl-texts?fileId=${encodeURIComponent(activeFileId)}&v=${Date.now()}`
+        : `/api/quotation-cases/${caseId}/webgl-texts?v=${Date.now()}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.texts)) {
           setCadTexts(data.texts);
         }
+      } else if (res.status === 404 && retryAttempt < 2) {
+        setTimeout(() => loadTexts(retryAttempt + 1), 1500);
       }
     } catch (err) {
       console.warn('CAD Texts load warning:', err);
     }
-  }, [caseId]);
+  }, [caseId, activeFileId]);
 
   useEffect(() => {
     loadBinaryData();
     loadTexts();
-  }, [loadBinaryData, loadTexts]);
+  }, [loadBinaryData, loadTexts, reloadKey]);
+
+  // Auto-recover when drawings count changes from 0 to > 0 if there was an initial error
+  const prevDrawingCountRef = useRef(drawings.length);
+  useEffect(() => {
+    if (drawings.length > 0 && prevDrawingCountRef.current === 0) {
+      prevDrawingCountRef.current = drawings.length;
+      loadBinaryData(0);
+      loadTexts(0);
+    }
+  }, [drawings.length, loadBinaryData, loadTexts]);
 
   // 3. Render Detected Overlays (Blue Frames, Green Title Blocks, Amber BOM Boxes) in Three.js
   useEffect(() => {
@@ -715,7 +742,11 @@ export default function WebGlCadViewer({
           <p className="text-rose-400 font-bold text-sm">도면 렌더링 오류</p>
           <p className="text-xs text-slate-300">{errorMsg}</p>
           <button
-            onClick={loadBinaryData}
+            onClick={() => {
+              setErrorMsg(null);
+              loadBinaryData(0);
+              loadTexts(0);
+            }}
             className="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
           >
             다시 시도

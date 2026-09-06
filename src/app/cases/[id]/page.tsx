@@ -11,9 +11,102 @@ import {
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
 
+// --- Team Activity Mock Data & Component ---
+const TEAM_MEMBERS = [
+  { id: 'admin', name: '최고관리자', role: '시스템 운영', avatar: '👑', color: 'bg-amber-100 text-amber-700 border-amber-300', lastLogin: '방금 전', processed: 124, projects: 12 },
+  { id: 'est1', name: '최견적', role: '견적 담당', avatar: '👨‍💼', color: 'bg-blue-100 text-blue-700 border-blue-300', lastLogin: '10분 전', processed: 45, projects: 5 },
+  { id: 'est2', name: '이견적', role: '견적 담당', avatar: '👩‍💼', color: 'bg-emerald-100 text-emerald-700 border-emerald-300', lastLogin: '1시간 전', processed: 38, projects: 4 },
+  { id: 'est3', name: '김견적', role: '견적 담당', avatar: '👨‍💻', color: 'bg-purple-100 text-purple-700 border-purple-300', lastLogin: '3시간 전', processed: 52, projects: 7 },
+  { id: 'est4', name: '송견적', role: '견적 담당', avatar: '👩‍💻', color: 'bg-pink-100 text-pink-700 border-pink-300', lastLogin: '어제', processed: 29, projects: 2 },
+  { id: 'est5', name: '박견적', role: '견적 담당', avatar: '🧑‍💻', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', lastLogin: '2일 전', processed: 15, projects: 1 },
+];
+
+function TeamActivityAccordion() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoveredMember, setHoveredMember] = useState<any>(null);
+
+  return (
+    <div className="mt-4 border border-slate-200 rounded-xl bg-white shadow-sm transition-all">
+      {/* Header / Avatar Stack */}
+      <div 
+        className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div>
+          <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
+            팀 사용 내역
+          </h4>
+          <span className="text-[10px] text-slate-400 mt-0.5 block">최근 접속 및 작업 현황</span>
+        </div>
+        
+        <div className="flex items-center">
+          <div className="flex -space-x-2 mr-2">
+            {TEAM_MEMBERS.map((m, idx) => (
+              <div 
+                key={m.id} 
+                className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-white shadow-sm text-[11px] relative cursor-help transition-transform hover:-translate-y-1 hover:z-10 ${m.color}`}
+                style={{ zIndex: TEAM_MEMBERS.length - idx }}
+                onMouseEnter={() => setHoveredMember(m)}
+                onMouseLeave={() => setHoveredMember(null)}
+              >
+                {m.avatar}
+                
+                {/* Popover */}
+                {hoveredMember?.id === m.id && !isOpen && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 p-2 bg-slate-900 text-white rounded-lg text-xs shadow-xl z-50 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-slate-900">
+                    <div className="font-bold border-b border-slate-700 pb-1 mb-1">{m.name} <span className="text-[10px] text-slate-400 font-normal">{m.role}</span></div>
+                    <div className="space-y-0.5 text-[10px]">
+                      <div className="flex justify-between text-slate-300"><span>최근 접속:</span> <span className="text-white">{m.lastLogin}</span></div>
+                      <div className="flex justify-between text-slate-300"><span>분석 완료:</span> <span className="text-white">{m.processed}건</span></div>
+                      <div className="flex justify-between text-slate-300"><span>진행 프로젝트:</span> <span className="text-white">{m.projects}건</span></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
+
+      {/* Accordion Body */}
+      {isOpen && (
+        <div className="border-t border-slate-100 bg-slate-50/50 p-2 space-y-1.5 rounded-b-xl overflow-hidden">
+          {TEAM_MEMBERS.map(m => (
+            <div key={m.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 transition-all">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs shadow-sm ${m.color}`}>
+                  {m.avatar}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-800">{m.name} <span className="text-[10px] text-slate-500 font-normal">{m.role}</span></div>
+                  <div className="text-[10px] text-slate-400">접속: {m.lastLogin}</div>
+                </div>
+              </div>
+              <div className="text-right text-[10px] space-y-0.5">
+                <div className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">
+                  <span className="font-semibold text-slate-800">{m.processed}</span>건 분석
+                </div>
+                <div className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">
+                  <span className="font-semibold text-slate-800">{m.projects}</span>건 진행중
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+// ----------------------------------------
+
 export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [data, setData] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [privacyReason, setPrivacyReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'cad' | 'structure' | 'approval' | 'quote' | 'excel'>('cad');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -85,6 +178,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     fetchData();
+    fetch('/api/auth/me').then(res => res.json()).then(d => setUser(d.user)).catch(() => {});
   }, [id]);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -826,6 +920,31 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const latestParseRun = data?.latestParseRun;
   const analyzedFileId = latestParseRun?.source_file_id || (files.length > 0 ? files[0]?.id : null);
   const drawings = data?.drawings || [];
+
+  // Check if a file is analyzed directly or via its derived DXF
+  const isFileAnalyzed = (file: any) => {
+    if (!file || drawings.length === 0) return false;
+    if (file.id === analyzedFileId) return true;
+    if (file.derived_from_file_id && file.derived_from_file_id === analyzedFileId) return true;
+    const derived = files.find((other: any) => other.derived_from_file_id === file.id);
+    if (derived && derived.id === analyzedFileId) return true;
+    if (latestParseRun && file.original_file_name) {
+      const baseName = file.original_file_name.replace(/\.(dwg|dxf)$/i, '');
+      const analyzedFile = files.find((f: any) => f.id === analyzedFileId);
+      if (analyzedFile && analyzedFile.original_file_name.startsWith(baseName)) return true;
+    }
+    return false;
+  };
+
+  // Resolve currently active file (calculated inline without hook to adhere to Rules of Hooks)
+  let activeFile = null;
+  if (selectedFileId) {
+    activeFile = files.find((f: any) => f.id === selectedFileId) || null;
+  }
+  if (!activeFile) {
+    activeFile = files.find((f: any) => isFileAnalyzed(f) && (f.file_type === 'DXF' || f.id === analyzedFileId)) || files[0] || null;
+  }
+
   const rawBomItems = data?.rawBomItems || [];
   const flattenedBomItems = data?.flattenedBomItems || [];
   const normalizedItems = data?.normalizedItems || [];
@@ -877,7 +996,56 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             </span>
           </div>
 
-          <h1 className="text-xl font-bold text-slate-900">{qc.case_name}</h1>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-xl font-bold text-slate-900">{qc.case_name}</h1>
+            {qc.visibility === 'SHARED' && <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700">사내 공유중</span>}
+            {qc.visibility === 'PRIVATE_PENDING' && <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-700">공개 불가 심사중</span>}
+            {qc.visibility === 'PRIVATE' && <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">공개 불가(보안)</span>}
+          </div>
+          {qc.visibility === 'SHARED' && (user?.userId === qc.created_by_user_id || user?.role === 'SUPER_ADMIN') && (
+            <button
+              onClick={() => setShowPrivacyModal(true)}
+              className="mt-2 text-xs text-slate-500 hover:text-amber-600 underline text-left"
+            >
+              이 견적건 공개 불가 요청하기
+            </button>
+          )}
+          {qc.visibility === 'PRIVATE_PENDING' && user?.role === 'SUPER_ADMIN' && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs font-bold text-amber-800 mb-1">비공개 요청 사유:</p>
+              <p className="text-sm text-amber-900 mb-3">{qc.visibility_reason}</p>
+              <div className="flex space-x-2">
+                <button
+                  onClick={async () => {
+                    if(!confirm('비공개 요청을 승인하시겠습니까?')) return;
+                    const res = await fetch(`/api/quotation-cases/${id}/visibility`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'APPROVE' })
+                    });
+                    if (res.ok) fetchData();
+                  }}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded transition-colors"
+                >
+                  승인 (비공개)
+                </button>
+                <button
+                  onClick={async () => {
+                    if(!confirm('비공개 요청을 반려하시겠습니까?')) return;
+                    const res = await fetch(`/api/quotation-cases/${id}/visibility`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'REJECT' })
+                    });
+                    if (res.ok) fetchData();
+                  }}
+                  className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded transition-colors"
+                >
+                  반려 (공유 유지)
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-2">
             <span className="flex items-center space-x-1">
@@ -1063,6 +1231,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
 
+              {/* Team Activity UI */}
+              <TeamActivityAccordion />
+
               {/* Uploaded Files List */}
               <div className="space-y-2 pt-2 border-t border-slate-100">
                 <div className="flex items-center justify-between">
@@ -1072,8 +1243,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   <span className="text-[11px] text-slate-400">클릭하여 선택</span>
                 </div>
                 {files.map((f: any) => {
-                  const isSelected = (selectedFileId === f.id) || (!selectedFileId && f.id === analyzedFileId);
-                  const isCurrentlyAnalyzed = f.id === analyzedFileId && drawings.length > 0;
+                  const isSelected = (selectedFileId === f.id) || (!selectedFileId && f.id === activeFile?.id);
+                  const isCurrentlyAnalyzed = isFileAnalyzed(f);
                   const isThisFileAnalyzing = analyzing && (analyzingFileId === f.id || (!analyzingFileId && isSelected));
                   const isDwg = f.file_type === 'DWG' || f.original_file_name.endsWith('.dwg');
 
@@ -1143,18 +1314,27 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                       {/* File Action Toolbar on Selection */}
                       {isSelected && !analyzing && (
                         <div className="flex items-center justify-between pt-1.5 border-t border-blue-200/60">
-                          <span className="text-[11px] text-blue-700 font-semibold">선택된 도면</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartAnalysis(f.id);
-                            }}
-                            disabled={analyzing}
-                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50 cursor-pointer flex items-center space-x-1"
-                          >
-                            <Play className="w-3 h-3 fill-white" />
-                            <span>이 도면으로 분석 실행</span>
-                          </button>
+                          <span className="text-[11px] text-blue-700 font-semibold">
+                            {isCurrentlyAnalyzed ? '도면 뷰어 활성화됨' : '선택된 도면'}
+                          </span>
+                          {!isCurrentlyAnalyzed ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartAnalysis(f.id);
+                              }}
+                              disabled={analyzing}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50 cursor-pointer flex items-center space-x-1"
+                            >
+                              <Play className="w-3 h-3 fill-white" />
+                              <span>이 도면으로 분석 실행</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center space-x-1">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>{drawings.length}개 도면 표시 중</span>
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1214,6 +1394,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               latestQuote={latestQuote}
               onToggleQuoteItem={handleToggleQuoteDrawing}
               onToggleAllQuoteDrawings={handleToggleAllQuoteDrawings}
+              selectedFile={activeFile}
+              onStartAnalysis={handleStartAnalysis}
+              isAnalyzing={analyzing}
+              allFiles={files}
+              onSelectFile={(fileId) => setSelectedFileId(fileId)}
             />
           </div>
       </div>
@@ -2012,6 +2197,50 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       )}
 
       {/* Manual Price Modal (방안 A: 수기 단가 추천 이력 & 자동 누적 풀) */}
+      {/* Privacy Modal */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-2">공개 불가 요청</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              기본적으로 모든 견적은 사내에 공유됩니다. 보안 등 특별한 사유로 본인만 열람해야 하는 경우 사유를 작성해 주세요. (최고 승인권자의 결재 후 비공개 처리됩니다.)
+            </p>
+            <textarea
+              className="w-full border border-slate-300 rounded p-3 text-sm h-24 mb-4"
+              placeholder="공개 불가 사유를 입력하세요..."
+              value={privacyReason}
+              onChange={e => setPrivacyReason(e.target.value)}
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 rounded hover:bg-slate-200 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  const res = await fetch(`/api/quotation-cases/${id}/visibility`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'REQUEST_PRIVATE', reason: privacyReason })
+                  });
+                  if (res.ok) {
+                    setShowPrivacyModal(false);
+                    fetchData();
+                  } else {
+                    alert('요청 중 오류가 발생했습니다.');
+                  }
+                }}
+                className="px-4 py-2 text-sm font-bold text-white bg-amber-600 rounded hover:bg-amber-700 transition-colors"
+              >
+                요청하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {manualPriceModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5">

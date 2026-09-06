@@ -101,7 +101,15 @@ export function initializeDatabase() {
       FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
+  `);
+  try {
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN visibility TEXT NOT NULL DEFAULT 'SHARED'").run();
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN visibility_reason TEXT").run();
+  } catch (e) {
+    // Ignore if columns already exist
+  }
 
+  db.exec(`
     -- 5. Uploaded Files (PROMPT 03, 18)
     CREATE TABLE IF NOT EXISTS uploaded_files (
       id TEXT PRIMARY KEY,
@@ -543,8 +551,8 @@ export function initializeDatabase() {
 
   // Ensure 5 demo users (김견적, 이견적, 최견적, 송견적, 박견적) and admin are registered
   const now = new Date().toISOString();
-  const defaultPassHash = bcrypt.hashSync('123456', 10);
-  const adminPassHash = bcrypt.hashSync('admin1234!', 10);
+  const defaultPassHash = bcrypt.hashSync('Cadon1234!@', 10);
+  const adminPassHash = bcrypt.hashSync('Cadon1234!@', 10);
 
   const demoUsers = [
     { id: 'usr_kim', login_id: 'kim', name: '김견적', role: 'SALES_USER' },
