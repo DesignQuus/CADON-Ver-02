@@ -347,7 +347,7 @@ export default function CasesPage() {
   const recentCase = myRecentCases.length > 0 ? myRecentCases[0] : null;
 
   return (
-    <div className="space-y-6 w-full pb-10">
+    <div className="space-y-3.5 w-full pb-10">
       {/* Quick Upload Progress Overlay */}
       {quickUploading && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -379,59 +379,77 @@ export default function CasesPage() {
         className="hidden"
       />
 
-      {/* Zone 2: 3-Step BOM Automation Guide & Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Zone 2: 3-Step BOM Automation Guide & Key Metrics (Slim & Compact) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Step 1 */}
-        <div className="bg-white p-5 rounded-[4px] border border-slate-200 shadow-xs hover:border-blue-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="w-7 h-7 rounded-[3px] bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center">
+        <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-blue-300 transition-colors flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center shrink-0">
               1
             </span>
-            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-[3px]">CAD 분석</span>
+            <div>
+              <div className="flex items-center space-x-1.5">
+                <h3 className="font-extrabold text-slate-900 text-xs tracking-tight">CAD DWG 자동 분석</h3>
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">BOM 검출</span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium line-clamp-1">
+                외곽선·표제란·BOM 자동 검출 및 WebGL 변환
+              </p>
+            </div>
           </div>
-          <h3 className="font-extrabold text-slate-900 text-sm mt-3">CAD DWG 자동 분석</h3>
-          <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
-            도면 외곽선, 표제란, BOM 테이블 영역 자동 검출 및 2D 벡터/3D WebGL 변환
-          </p>
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
-            <span>분석된 도면</span>
-            <span className="font-mono font-extrabold text-sm text-slate-900">{totalDrawingsSum.toLocaleString()} 장</span>
+          <div className="text-right shrink-0 pl-2">
+            <div className="text-[10px] font-semibold text-slate-400">분석 도면</div>
+            <div className="font-mono font-extrabold text-sm text-slate-900 leading-tight">
+              {totalDrawingsSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">장</span>
+            </div>
           </div>
         </div>
 
         {/* Step 2 */}
-        <div className="bg-white p-5 rounded-[4px] border border-slate-200 shadow-xs hover:border-emerald-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="w-7 h-7 rounded-[3px] bg-emerald-100 text-emerald-700 text-xs font-extrabold flex items-center justify-center">
+        <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-emerald-300 transition-colors flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 text-xs font-extrabold flex items-center justify-center shrink-0">
               2
             </span>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-[3px]">단가 최적화</span>
+            <div>
+              <div className="flex items-center space-x-1.5">
+                <h3 className="font-extrabold text-slate-900 text-xs tracking-tight">AI 단가 최적화 매칭</h3>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded">단가 매칭</span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium line-clamp-1">
+                사내 마스터 단가 자동 조회 및 1-클릭 일괄 적용
+              </p>
+            </div>
           </div>
-          <h3 className="font-extrabold text-slate-900 text-sm mt-3">AI 단가 최적화 매칭</h3>
-          <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
-            사내 마스터 단가 자동 조회 및 누적된 Manual Price 1-클릭 일괄 적용
-          </p>
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
-            <span>정규화된 BOM 부품</span>
-            <span className="font-mono font-extrabold text-sm text-emerald-600">{totalBomItemsSum.toLocaleString()} 개</span>
+          <div className="text-right shrink-0 pl-2">
+            <div className="text-[10px] font-semibold text-slate-400">정규화 BOM</div>
+            <div className="font-mono font-extrabold text-sm text-emerald-600 leading-tight">
+              {totalBomItemsSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">개</span>
+            </div>
           </div>
         </div>
 
         {/* Step 3 */}
-        <div className="bg-white p-5 rounded-[4px] border border-slate-200 shadow-xs hover:border-teal-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="w-7 h-7 rounded-[3px] bg-teal-100 text-teal-700 text-xs font-extrabold flex items-center justify-center">
+        <div className="bg-white p-3 rounded-[4px] border border-slate-200 shadow-2xs hover:border-teal-300 transition-colors flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <span className="w-6 h-6 rounded bg-teal-100 text-teal-700 text-xs font-extrabold flex items-center justify-center shrink-0">
               3
             </span>
-            <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2.5 py-1 rounded-[3px]">견적서 발행</span>
+            <div>
+              <div className="flex items-center space-x-1.5">
+                <h3 className="font-extrabold text-slate-900 text-xs tracking-tight">표준 엑셀 견적서 발행</h3>
+                <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.2 rounded">엑셀 다운로드</span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium line-clamp-1">
+                인쇄용 표준 화이트 양식 및 공인 엑셀 서식
+              </p>
+            </div>
           </div>
-          <h3 className="font-extrabold text-slate-900 text-sm mt-3">표준 엑셀 견적서 발행</h3>
-          <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
-            인쇄용 표준 화이트 양식 출력 및 공인 비즈니스 엑셀 서식 즉시 다운로드
-          </p>
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
-            <span>누적 견적 총액</span>
-            <span className="font-mono font-extrabold text-sm text-teal-700">{totalQuotedAmountSum.toLocaleString()} 원</span>
+          <div className="text-right shrink-0 pl-2">
+            <div className="text-[10px] font-semibold text-slate-400">누적 견적 총액</div>
+            <div className="font-mono font-extrabold text-sm text-teal-700 leading-tight">
+              {totalQuotedAmountSum.toLocaleString()} <span className="text-xs font-medium text-slate-500">원</span>
+            </div>
           </div>
         </div>
       </div>
