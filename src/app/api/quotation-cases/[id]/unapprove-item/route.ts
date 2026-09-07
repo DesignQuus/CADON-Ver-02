@@ -60,8 +60,8 @@ export async function POST(
 
     // 4. Update Quote Readiness
     const totalNorm = (db.prepare('SELECT COUNT(*) as cnt FROM normalized_bom_items WHERE quotation_case_id = ?').get(id) as any).cnt;
-    const totalApproved = (db.prepare('SELECT COUNT(*) as cnt FROM final_bom_items WHERE quotation_case_id = ? AND approval_status = "APPROVED"').get(id) as any).cnt;
-    const totalExcluded = (db.prepare('SELECT COUNT(*) as cnt FROM final_bom_items WHERE quotation_case_id = ? AND approval_status = "EXCLUDED"').get(id) as any).cnt;
+    const totalApproved = (db.prepare('SELECT COUNT(*) as cnt FROM final_bom_items WHERE quotation_case_id = ? AND approval_status = ?').get(id, 'APPROVED') as any).cnt;
+    const totalExcluded = (db.prepare('SELECT COUNT(*) as cnt FROM final_bom_items WHERE quotation_case_id = ? AND approval_status = ?').get(id, 'EXCLUDED') as any).cnt;
 
     const readiness = (totalApproved + totalExcluded >= totalNorm && totalNorm > 0) ? 'READY_FOR_QUOTE' : 'REVIEW_REQUIRED';
     db.prepare('UPDATE quotation_cases SET quote_readiness = ?, updated_at = ? WHERE id = ?').run(readiness, now, id);
