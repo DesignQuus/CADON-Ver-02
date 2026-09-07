@@ -2612,87 +2612,140 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                     </div>
                   </div>
 
+                  {/* Approval Status Banner (If already approved) */}
+                  {finalBomItems.find((f: any) => f.normalized_item_id === selectedNormItem.id) && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <strong className="font-bold">검수 승인 완료된 품목입니다</strong>
+                          {(() => {
+                            const fItem = finalBomItems.find((f: any) => f.normalized_item_id === selectedNormItem.id);
+                            return (
+                              <div className="text-[11px] text-emerald-700 font-mono mt-0.5">
+                                [{fItem?.final_master_code || '도면 가공품'}] {fItem?.final_name} • {fItem?.final_quantity} {fItem?.final_unit}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                        승인완료
+                      </span>
+                    </div>
+                  )}
+
                   {/* Top 3 Master Recommendation Cards */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      <span>추천 마스터 후보 (Top 3 Candidates)</span>
+                      <span>
+                        추천 마스터 후보 (
+                        {candidates.filter((c: any) => c.normalized_item_id === selectedNormItem.id).length}건)
+                      </span>
                     </h4>
 
-                    {candidates
-                      .filter((c: any) => c.normalized_item_id === selectedNormItem.id)
-                      .map((cand: any) => {
-                        const pos = JSON.parse(cand.positive_evidence_json || '[]');
-                        const neg = JSON.parse(cand.negative_evidence_json || '[]');
+                    {candidates.filter((c: any) => c.normalized_item_id === selectedNormItem.id).length > 0 ? (
+                      candidates
+                        .filter((c: any) => c.normalized_item_id === selectedNormItem.id)
+                        .map((cand: any) => {
+                          const pos = JSON.parse(cand.positive_evidence_json || '[]');
+                          const neg = JSON.parse(cand.negative_evidence_json || '[]');
 
-                        return (
-                          <div
-                            key={cand.id}
-                            className="p-4 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50/50 transition-all space-y-3"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center">
-                                  {cand.rank}
-                                </span>
-                                <span className="font-bold text-slate-900 text-sm">
-                                  [{cand.master_code}] {cand.standard_name}
+                          return (
+                            <div
+                              key={cand.id}
+                              className="p-4 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50/50 transition-all space-y-3"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center">
+                                    {cand.rank}
+                                  </span>
+                                  <span className="font-bold text-slate-900 text-sm">
+                                    [{cand.master_code}] {cand.standard_name}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-extrabold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                                  점수: {cand.total_score}점
                                 </span>
                               </div>
-                              <span className="text-xs font-extrabold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
-                                점수: {cand.total_score}점
-                              </span>
-                            </div>
 
-                            {/* Evidence Reasons (PROMPT 12) */}
-                            <div className="space-y-1 text-xs">
-                              {pos.map((p: string, i: number) => (
-                                <div key={i} className="text-emerald-700 flex items-center space-x-1">
-                                  <Check className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{p}</span>
-                                </div>
-                              ))}
-                              {neg.map((n: string, i: number) => (
-                                <div key={i} className="text-red-600 flex items-center space-x-1">
-                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{n}</span>
-                                </div>
-                              ))}
-                            </div>
+                              {/* Evidence Reasons (PROMPT 12) */}
+                              <div className="space-y-1 text-xs">
+                                {pos.map((p: string, i: number) => (
+                                  <div key={i} className="text-emerald-700 flex items-center space-x-1">
+                                    <Check className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{p}</span>
+                                  </div>
+                                ))}
+                                {neg.map((n: string, i: number) => (
+                                  <div key={i} className="text-red-600 flex items-center space-x-1">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{n}</span>
+                                  </div>
+                                ))}
+                              </div>
 
-                            {/* Approval Action Buttons (PROMPT 13) */}
-                            <div className="flex items-center space-x-2 pt-2 border-t border-slate-200">
-                              <button
-                                onClick={() => handleApproveItem(selectedNormItem.id, 'EXISTING_MASTER', cand)}
-                                disabled={actionLoading}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                              >
-                                이 마스터로 승인
-                              </button>
-                              <button
-                                onClick={() => handleApproveItem(selectedNormItem.id, 'SIMILAR_MASTER', cand, '유사품 규격 차이 승인')}
-                                disabled={actionLoading}
-                                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                              >
-                                유사품으로 승인
-                              </button>
+                              {/* Approval Action Buttons (PROMPT 13) */}
+                              <div className="flex items-center space-x-2 pt-2 border-t border-slate-200">
+                                <button
+                                  onClick={() => handleApproveItem(selectedNormItem.id, 'EXISTING_MASTER', cand)}
+                                  disabled={actionLoading}
+                                  className="btn-hover-effect px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  이 마스터로 승인
+                                </button>
+                                <button
+                                  onClick={() => handleApproveItem(selectedNormItem.id, 'SIMILAR_MASTER', cand, '유사품 규격 차이 승인')}
+                                  disabled={actionLoading}
+                                  className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                >
+                                  유사품으로 승인
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                    ) : (
+                      <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center space-y-2.5">
+                        <Info className="w-5 h-5 text-slate-400 mx-auto" />
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">사내 기성 표준품 DB에 일치하는 후보가 없습니다.</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            도면에서 직접 추출된 고유 주문 제작 가공품/어셈블리 부품입니다.
+                          </p>
+                        </div>
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleApproveItem(selectedNormItem.id, 'NEW_ITEM_CANDIDATE', null, '도면 주문가공품 승인')}
+                            disabled={actionLoading}
+                            className="btn-hover-effect px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 transition-colors cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>도면 가공품으로 확정 승인</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Exception Decisions (PROMPT 13) */}
-                  <div className="flex items-center space-x-2 pt-3 border-t border-slate-100">
-                    <button
-                      onClick={() => handleApproveItem(selectedNormItem.id, 'NEW_ITEM_CANDIDATE', null, '신규 마스터 등록 후보')}
-                      className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-semibold transition-colors"
-                    >
-                      신규 마스터 후보 지정
-                    </button>
+                  <div className="flex items-center space-x-2 pt-3 border-t border-slate-100 flex-wrap gap-y-2">
+                    {candidates.filter((c: any) => c.normalized_item_id === selectedNormItem.id).length > 0 && (
+                      <button
+                        onClick={() => handleApproveItem(selectedNormItem.id, 'NEW_ITEM_CANDIDATE', null, '신규 마스터 등록 후보')}
+                        disabled={actionLoading}
+                        className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        신규 마스터 후보 지정
+                      </button>
+                    )}
                     <button
                       onClick={() => handleApproveItem(selectedNormItem.id, 'EXCLUDED', null, '견적 제외 품목')}
-                      className="px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded-xl text-xs font-semibold transition-colors"
+                      disabled={actionLoading}
+                      className="px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                     >
                       견적 제외 (EXCLUDED)
                     </button>
