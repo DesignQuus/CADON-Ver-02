@@ -184,8 +184,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         }
       } catch {}
     }
-    if (idx < 0 && (target.drawing_name || target.normalized_name || target.name_raw)) {
-      const targetName = target.drawing_name || target.normalized_name || target.name_raw;
+    if (idx < 0 && (target.drawing_name || target.normalized_name || target.name_raw || target.item_name)) {
+      const targetName = target.drawing_name || target.normalized_name || target.name_raw || target.item_name;
       idx = allDrawings.findIndex(
         (item: any) =>
           item.drawing_name_raw === targetName ||
@@ -1638,6 +1638,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                         </div>
                       </th>
                       <th className="py-1.5 px-3">마스터 코드</th>
+                      <th className="py-1.5 px-2 text-center w-24">도면 위치</th>
                       <th className="py-1.5 px-3">품명 (Standard Name)</th>
                       <th className="py-1.5 px-3">규격 / 재질</th>
                       <th className="py-1.5 px-3 text-right">
@@ -1709,6 +1710,20 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           </td>
                           <td className={`py-1.5 px-3 font-semibold ${isExcluded ? 'text-slate-400' : 'text-slate-900'}`}>
                             {qi.master_code}
+                          </td>
+                          <td className="py-1 px-2 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNavigateToCadDrawing(qi);
+                              }}
+                              className="btn-hover-effect px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10.5px] font-bold inline-flex items-center space-x-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
+                              title="1. 도면등록 & 뷰어 탭으로 이동하여 해당 도면/BOM 위치를 줌인합니다."
+                            >
+                              <Search className="w-3 h-3" />
+                              <span>도면 보기</span>
+                            </button>
                           </td>
                           <td className={`py-1.5 px-3 font-medium ${isExcluded ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                             {qi.item_name}
@@ -1828,7 +1843,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   {quoteItems.length > 0 && (
                     <tfoot className="bg-slate-50/95 border-t-2 border-slate-300 font-bold text-slate-800">
                       <tr>
-                        <td colSpan={5} className="py-2 px-3 text-right font-sans text-slate-600">
+                        <td colSpan={6} className="py-2 px-3 text-right font-sans text-slate-600">
                           견적 포함 수량 합계:
                         </td>
                         <td className="py-2 px-3 text-right font-mono text-blue-700 font-bold whitespace-nowrap">
