@@ -18,13 +18,41 @@ export async function POST(
   }
 
   try {
-    const unapprovedItems = db.prepare(`
-      SELECT ni.*, mc.master_id, mc.master_code, mc.standard_name, mc.specification as master_spec, mc.material as master_mat
-      FROM normalized_bom_items ni
-      JOIN master_candidates mc ON mc.normalized_item_id = ni.id AND mc.rank = 1
-      WHERE ni.quotation_case_id = ?
-        AND ni.id NOT IN (SELECT normalized_item_id FROM final_bom_items WHERE quotation_case_id = ?)
-    `).all(id, id) as any[];
+    const body = await req.json().catch(() => ({}));
+    const approveAll = body.approveAll ?? true;
+
+    const unapprovedItems = approveAll && !body.onlyMatched
+      ? db.prepare(`
+          SELECT 
+            ni.*, 
+            COALESCE(fb.part_no, '') as drawing_no,
+            COALESCE(d.drawing_name_raw, ni.normalized_name) as drawing_name,
+            COALESCE(d.scale, fb.specification, ni.spec_candidate, '-') as drawing_spec,
+            COALESCE(d.material, fb.material, ni.material_candidate, 'SS400') as drawing_mat,
+            mc.master_id, 
+            mc.master_code, 
+            mc.standard_name, 
+            mc.specification as master_spec, 
+            mc.material as master_mat
+          FROM normalized_bom_items ni
+          LEFT JOIN flattened_bom_items fb ON fb.id = REPLACE(ni.id, 'norm_', 'fb_')
+          LEFT JOIN (
+            SELECT quotation_case_id, drawing_no_raw, drawing_no_normalized, drawing_name_raw, scale, material
+            FROM drawings
+            GROUP BY quotation_case_id, drawing_no_raw
+          ) d ON d.quotation_case_id = ni.quotation_case_id 
+             AND (d.drawing_no_raw = fb.part_no OR d.drawing_no_normalized = fb.part_no)
+          LEFT JOIN master_candidates mc ON mc.normalized_item_id = ni.id AND mc.rank = 1
+          WHERE ni.quotation_case_id = ?
+            AND ni.id NOT IN (SELECT normalized_item_id FROM final_bom_items WHERE quotation_case_id = ?)
+        `).all(id, id) as any[]
+      : db.prepare(`
+          SELECT ni.*, mc.master_id, mc.master_code, mc.standard_name, mc.specification as master_spec, mc.material as master_mat
+          FROM normalized_bom_items ni
+          JOIN master_candidates mc ON mc.normalized_item_id = ni.id AND mc.rank = 1
+          WHERE ni.quotation_case_id = ?
+            AND ni.id NOT IN (SELECT normalized_item_id FROM final_bom_items WHERE quotation_case_id = ?)
+        `).all(id, id) as any[];
 
     const now = new Date().toISOString();
     let approvedCount = 0;
@@ -32,6 +60,14 @@ export async function POST(
     for (const item of unapprovedItems) {
       const approvalId = `appr_${Date.now()}_${approvedCount}`;
       const finalBomId = `final_${item.id}`;
+      const isMatched = !!item.master_id;
+
+      const decisionType = isMatched ? 'EXISTING_MASTER' : 'CUSTOM_PART';
+      const decisionReason = isMatched ? '1순위 마스터 추천 일괄 승인' : '도면 가공품 자동 승인 (신규/주문제작)';
+      const finalCode = isMatched ? item.master_code : (item.drawing_no || 'CUSTOM');
+      const finalName = isMatched ? item.standard_name : (item.drawing_name || item.normalized_name);
+      const finalSpec = isMatched ? (item.master_spec || item.spec_candidate) : (item.drawing_spec || item.spec_candidate || '-');
+      const finalMat = isMatched ? (item.master_mat || item.material_candidate) : (item.drawing_mat || item.material_candidate || 'SS400');
 
       // 1. Audit
       db.prepare(`
@@ -40,8 +76,8 @@ export async function POST(
           decision_type, decision_reason, is_override, approved_by_user_id, approved_at, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        approvalId, id, item.id, item.master_id,
-        'EXISTING_MASTER', '일괄 승인 (Bulk Approval)', 0, session.userId, now, now
+        approvalId, id, item.id, item.master_id || null,
+        decisionType, decisionReason, 0, session.userId, now, now
       );
 
       // 2. Final BOM
@@ -52,8 +88,8 @@ export async function POST(
           approval_status, approved_by_user_id, approved_at, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        finalBomId, id, item.id, item.master_id, item.master_code,
-        item.standard_name, item.master_spec || item.spec_candidate, item.master_mat || item.material_candidate,
+        finalBomId, id, item.id, item.master_id || null, finalCode,
+        finalName, finalSpec, finalMat,
         item.quantity, item.unit, 'APPROVED', session.userId, now, now
       );
 

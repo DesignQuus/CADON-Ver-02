@@ -368,13 +368,18 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
   };
 
-  // 4. Bulk Approve (PROMPT 13)
-  const handleBulkApprove = async () => {
-    if (!confirm('1순위 추천 마스터와 일치하는 모든 미승인 품목을 일괄 승인하시겠습니까?')) return;
+  // 4. Bulk Approve (PROMPT 13) - Supports approving all normalized items
+  const handleBulkApprove = async (approveAll: boolean = true) => {
+    const confirmMsg = approveAll
+      ? `추천 마스터 및 도면 가공품을 포함하여 전체 ${normalizedItems.length}개 품목을 일괄 승인하시겠습니까?`
+      : '1순위 추천 마스터와 일치하는 미승인 품목만 승인하시겠습니까?';
+    if (!confirm(confirmMsg)) return;
     setActionLoading(true);
     try {
       const res = await fetch(`/api/quotation-cases/${id}/bulk-approve`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approveAll, onlyMatched: !approveAll })
       });
       if (res.ok) {
         await fetchData();
@@ -1129,6 +1134,18 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         </button>
 
         <button
+          onClick={() => setActiveTab('approval')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+            activeTab === 'approval'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>2. 마스터 매칭 & 검수자 승인</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('quote')}
           className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
             activeTab === 'quote'
@@ -1137,7 +1154,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           }`}
         >
           <Database className="w-4 h-4" />
-          <span>2. 견적서 산출 & 단가</span>
+          <span>3. 견적서 산출 & 단가</span>
         </button>
 
         <button
@@ -1149,7 +1166,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           }`}
         >
           <FileSpreadsheet className="w-4 h-4" />
-          <span>3. 표준 견적서 미리보기 (PDF/Excel)</span>
+          <span>4. 표준 견적서 미리보기 (PDF/Excel)</span>
         </button>
 
         <button
@@ -1161,19 +1178,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>4. 도면구조 & 다단계 BOM</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('approval')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
-            activeTab === 'approval'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>5. 마스터 매칭 & 검수자 승인</span>
+          <span>5. 도면구조 & 다단계 BOM</span>
         </button>
       </div>
 
@@ -1844,8 +1849,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   onClick={() => setActiveTab('approval')}
                   className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
                 >
-                  <span>5. 마스터 매칭 직접 검토</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>2. 마스터 매칭 직접 검토로 이동</span>
                 </button>
               </div>
             </div>
@@ -1853,7 +1858,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* TAB 3: Standard Quotation Preview & PDF / Excel Export */}
+      {/* TAB 4: Standard Quotation Preview & PDF / Excel Export */}
       {activeTab === 'excel' && (
         <QuotationDocumentPreview
           quote={latestQuote}
@@ -2020,14 +2025,14 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>2. 견적서로 돌아가기</span>
+                  <span>3. 견적서 산출로 이동</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab('approval')}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer"
                 >
-                  <span>다음: 5. 마스터 매칭 및 검수자 승인</span>
+                  <span>2. 마스터 매칭 및 검수자 승인으로 이동</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -2036,32 +2041,47 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* TAB 5: Master Matching & Reviewer Approval (PROMPT 11, 12, 13) */}
+      {/* TAB 2: Master Matching & Reviewer Approval (PROMPT 11, 12, 13) */}
       {activeTab === 'approval' && (
         <div className="space-y-6">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h3 className="font-bold text-slate-900 text-base">검수자 승인 워크벤치 (Reviewer Approval Workbench)</h3>
+              <div className="flex items-center space-x-2">
+                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-extrabold font-mono">
+                  STEP 2
+                </span>
+                <h3 className="font-bold text-slate-900 text-base">마스터 매칭 & 검수자 승인 워크벤치</h3>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                AI 추천 마스터 품목을 검토하여 기존품 승인, 유사품 차이 승인, 신규 마스터 등록 또는 견적 제외를 확정합니다.
+                도면에서 추출된 BOM 부품을 검토하여 사내 마스터 매칭 또는 신규 가공품으로 확정 승인 후 3단계 견적서로 전달합니다.
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap gap-y-2">
               <button
-                onClick={handleBulkApprove}
+                onClick={() => handleBulkApprove(true)}
                 disabled={actionLoading}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+                className="btn-hover-effect px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+                title="AI 마스터 추천 품목과 미매칭 주문가공품을 포함하여 전체 도면 품목을 일괄 승인합니다."
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>1순위 추천 일괄 승인 (Bulk Approve)</span>
+                <span>도면 품목 전수 일괄 승인 ({normalizedItems.length}개 전체)</span>
+              </button>
+              <button
+                onClick={() => handleBulkApprove(false)}
+                disabled={actionLoading}
+                className="btn-hover-effect-secondary px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                title="AI 1순위 추천 마스터와 매칭된 품목만 승인합니다."
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>AI 추천만 승인</span>
               </button>
               <button
                 onClick={handleCreateQuote}
                 disabled={actionLoading}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+                className="btn-hover-effect px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <span>승인 반영 ➡️ 2. 견적서 산출로 이동</span>
+                <span>승인 반영 ➡️ 3. 견적서 산출로 이동</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
