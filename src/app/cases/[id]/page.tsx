@@ -7,7 +7,7 @@ import {
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Unlock, Sparkles, Building2,
   Folder, Calendar, Check, X, ShieldAlert, ShieldCheck, Clock, Send, ArrowDown, ArrowLeft, Home, Eye, Download, Info, Trash2,
   Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin,
-  Table, LayoutGrid, Filter, RotateCcw
+  Table, LayoutGrid, Filter, RotateCcw, User
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
@@ -246,8 +246,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       if (res.ok) {
         const json = await res.json();
         setData(json);
-        if (json.normalizedItems?.length > 0 && !selectedNormItem) {
-          setSelectedNormItem(json.normalizedItems[0]);
+        if (json.normalizedItems?.length > 0) {
+          if (!selectedNormItem) {
+            setSelectedNormItem(json.normalizedItems[0]);
+          }
+          // Synchronize selectedApprovalIds with all quote-included items from Tab 1
+          const quoteIncludedIds = json.normalizedItems
+            .filter((ni: any) => ni.is_quote_included !== 0)
+            .map((ni: any) => ni.id);
+          setSelectedApprovalIds(quoteIncludedIds);
         }
       }
     } finally {
@@ -308,7 +315,13 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   // 2. Start Analysis Manual Trigger (PROMPT 18-R1 / 18-R2)
   const handleStartAnalysis = async (targetFileId?: any) => {
-    const rawFiles = (data?.files || []).filter((f: any) => f.file_role !== 'VECTOR_SVG' && f.file_type !== 'SVG' && !f.original_file_name.endsWith('.svg'));
+    const rawFiles = (data?.files || []).filter((f: any) => 
+      f.file_role !== 'VECTOR_SVG' && 
+      f.file_type !== 'SVG' && 
+      f.file_role !== 'DERIVED' && 
+      !f.original_file_name.endsWith('.svg') &&
+      !f.original_file_name.endsWith('.dwg.dxf')
+    );
     const fileIdToUse = typeof targetFileId === 'string'
       ? targetFileId
       : (selectedFileId || data?.latestParseRun?.source_file_id || (rawFiles && rawFiles[0]?.id));
@@ -418,7 +431,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   // 4. Bulk Approve (PROMPT 13) - Supports approving all normalized items
   const handleBulkApprove = async (approveAll: boolean = true) => {
     const confirmMsg = approveAll
-      ? `추천 마스터 및 도면 가공품을 포함하여 전체 ${normalizedItems.length}개 품목을 일괄 승인하고, 견적서에 바로 반영하시겠습니까?`
+      ? `추천 마스터 및 도면 가공품을 포함하여 견적 대상 ${quoteIncCount}개 품목을 일괄 승인하고, 견적서에 바로 반영하시겠습니까?`
       : '1순위 추천 마스터와 일치하는 미승인 품목만 승인하시겠습니까?';
     if (!confirm(confirmMsg)) return;
     setActionLoading(true);
@@ -870,8 +883,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       });
 
       // 3. Update Normalized BOM items
-      const updatedBom = (prev.normalizedBomItems || []).map((bi: any) => {
-        if (noSet.has(bi.part_no) || noSet.has(bi.part_name)) {
+      const updatedBom = (prev.normalizedItems || []).map((bi: any) => {
+        if (noSet.has(bi.drawing_no) || noSet.has(bi.raw_name) || noSet.has(bi.normalized_name)) {
           return {
             ...bi,
             is_quote_included: incVal,
@@ -899,7 +912,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         ...prev,
         drawings: updatedDrawings,
         quoteItems: updatedItems,
-        normalizedBomItems: updatedBom,
+        normalizedItems: updatedBom,
         quotes: updatedQuotes,
         latestQuote: prev.latestQuote ? {
           ...prev.latestQuote,
@@ -909,6 +922,19 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           total_amount: totalAmount
         } : prev.latestQuote
       };
+    });
+
+    // Also synchronize selectedApprovalIds for Tab 2 checkboxes
+    setSelectedApprovalIds((prev) => {
+      const itemsToMatch = (data?.normalizedItems || []).filter((ni: any) => 
+        drawingNos.includes(ni.drawing_no) || drawingNos.includes(ni.raw_name) || drawingNos.includes(ni.normalized_name)
+      );
+      const idsToChange = new Set(itemsToMatch.map((m: any) => m.id));
+      if (isIncluded) {
+        return Array.from(new Set([...prev, ...idsToChange]));
+      } else {
+        return prev.filter((id) => !idsToChange.has(id));
+      }
     });
 
     try {
@@ -964,7 +990,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         exclude_reason: isIncluded ? null : '일괄 제외'
       }));
       const updatedItems = (prev.quoteItems || []).map((qi: any) => ({ ...qi, is_included: incVal }));
-      const updatedBom = (prev.normalizedBomItems || []).map((bi: any) => ({
+      const updatedBom = (prev.normalizedItems || []).map((bi: any) => ({
         ...bi,
         is_quote_included: incVal,
         exclude_reason: isIncluded ? null : '일괄 제외'
@@ -988,7 +1014,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         ...prev,
         drawings: updatedDrawings,
         quoteItems: updatedItems,
-        normalizedBomItems: updatedBom,
+        normalizedItems: updatedBom,
         quotes: updatedQuotes,
         latestQuote: prev.latestQuote ? {
           ...prev.latestQuote,
@@ -999,6 +1025,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         } : prev.latestQuote
       };
     });
+
+    // Synchronize selectedApprovalIds for Tab 2 checkboxes
+    setSelectedApprovalIds(isIncluded ? (data?.normalizedItems || []).map((n: any) => n.id) : []);
 
     try {
       const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
@@ -1183,7 +1212,14 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   const qc = data?.case;
   const rawFiles = data?.files || [];
-  const files = rawFiles.filter((f: any) => f.file_role !== 'VECTOR_SVG' && f.file_type !== 'SVG' && !f.original_file_name.endsWith('.svg'));
+  // User-facing primary source drawings only (exclude internal conversion artifacts like DERIVED and VECTOR_SVG)
+  const files = rawFiles.filter((f: any) => 
+    f.file_role !== 'VECTOR_SVG' && 
+    f.file_type !== 'SVG' && 
+    f.file_role !== 'DERIVED' && 
+    !f.original_file_name.endsWith('.svg') &&
+    !f.original_file_name.endsWith('.dwg.dxf')
+  );
   const hasFiles = files.length > 0 || (data?.drawings && data.drawings.length > 0);
   const latestParseRun = hasFiles ? data?.latestParseRun : null;
   const analyzedFileId = latestParseRun?.source_file_id || (files.length > 0 ? files[0]?.id : null);
@@ -1193,24 +1229,25 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const isFileAnalyzed = (file: any) => {
     if (!file || drawings.length === 0) return false;
     if (file.id === analyzedFileId) return true;
+    if (file.has_derived_dxf) return true;
     if (file.derived_from_file_id && file.derived_from_file_id === analyzedFileId) return true;
-    const derived = files.find((other: any) => other.derived_from_file_id === file.id);
+    const derived = (data?.allFiles || []).find((other: any) => other.derived_from_file_id === file.id);
     if (derived && derived.id === analyzedFileId) return true;
     if (latestParseRun && file.original_file_name) {
       const baseName = file.original_file_name.replace(/\.(dwg|dxf)$/i, '');
-      const analyzedFile = files.find((f: any) => f.id === analyzedFileId);
+      const analyzedFile = (data?.allFiles || files).find((f: any) => f.id === analyzedFileId);
       if (analyzedFile && analyzedFile.original_file_name.startsWith(baseName)) return true;
     }
-    return false;
+    return drawings.length > 0;
   };
 
-  // Resolve currently active file (calculated inline without hook to adhere to Rules of Hooks)
+  // Resolve currently active file (always prefer primary source drawing)
   let activeFile = null;
   if (selectedFileId) {
     activeFile = files.find((f: any) => f.id === selectedFileId) || null;
   }
   if (!activeFile) {
-    activeFile = files.find((f: any) => isFileAnalyzed(f) && (f.file_type === 'DXF' || f.id === analyzedFileId)) || files[0] || null;
+    activeFile = files.find((f: any) => isFileAnalyzed(f)) || files[0] || null;
   }
 
   const rawBomItems = hasFiles ? (data?.rawBomItems || []) : [];
@@ -1223,14 +1260,14 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   // 💎 Filtered and Counted Normalized Items for Tab 2 (Calculated inline without hook to avoid early-return violation)
   const approvedItemIds = new Set(finalBomItems.map((f: any) => f.normalized_item_id));
-  const pendingItemsCount = normalizedItems.filter((ni: any) => !approvedItemIds.has(ni.id)).length;
+  const pendingItemsCount = normalizedItems.filter((ni: any) => !approvedItemIds.has(ni.id) && ni.is_quote_included !== 0).length;
   const approvedItemsCount = normalizedItems.filter((ni: any) => approvedItemIds.has(ni.id)).length;
   const quoteIncCount = normalizedItems.filter((ni: any) => ni.is_quote_included !== 0).length;
   const quoteExcCount = normalizedItems.filter((ni: any) => ni.is_quote_included === 0).length;
 
   const filteredNormalizedItems = normalizedItems.filter((ni: any) => {
     const isApproved = approvedItemIds.has(ni.id);
-    if (approvalFilterTab === 'PENDING' && isApproved) return false;
+    if (approvalFilterTab === 'PENDING' && (isApproved || ni.is_quote_included === 0)) return false;
     if (approvalFilterTab === 'APPROVED' && !isApproved) return false;
     if (approvalFilterTab === 'QUOTE_INCLUDED' && ni.is_quote_included === 0) return false;
     if (approvalFilterTab === 'QUOTE_EXCLUDED' && (ni.is_quote_included === undefined || ni.is_quote_included === 1)) return false;
@@ -1340,6 +1377,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           <div className="flex items-center space-x-3 mb-2">
             <span className="text-sm font-mono font-bold px-3 py-1 bg-slate-100 text-slate-800 rounded-lg">
               {qc.case_no}
+            </span>
+            <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center space-x-1">
+              <User className="w-3.5 h-3.5 text-indigo-600" />
+              <span>담당자: {qc.created_by_name || ownerName}</span>
             </span>
             <span
               className={`text-xs font-bold px-2.5 py-1 rounded-full ${
@@ -1779,6 +1820,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           }`}>
                             {isDwg ? '원본 DWG' : 'CAD DXF'}
                           </span>
+                          {f.has_derived_dxf && (
+                            <span className="px-1.5 py-0.5 rounded font-mono text-[9.5px] font-bold bg-purple-100 text-purple-700 border border-purple-200" title="WebGL 렌더링용 DXF 변환 완료">
+                              DXF 변환완료
+                            </span>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -2628,10 +2674,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 onClick={() => handleBulkApprove(true)}
                 disabled={actionLoading}
                 className="btn-hover-effect px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
-                title="AI 마스터 추천 품목과 미매칭 주문가공품을 포함하여 전체 도면 품목을 일괄 승인합니다."
+                title="1단계 표제란에서 견적 대상으로 선택된 품목들을 일괄 승인합니다."
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>도면 품목 전수 일괄 승인 ({normalizedItems.length}개 전체)</span>
+                <span>견적 대상 품목 일괄 승인 ({quoteIncCount}개)</span>
               </button>
               <button
                 onClick={() => handleBulkApprove(false)}
@@ -2870,12 +2916,19 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                               type="checkbox"
                               checked={filteredNormalizedItems.length > 0 && filteredNormalizedItems.every((n: any) => selectedApprovalIds.includes(n.id))}
                               onChange={(e) => {
-                                if (e.target.checked) {
+                                const checked = e.target.checked;
+                                if (checked) {
                                   const allIds = Array.from(new Set([...selectedApprovalIds, ...filteredNormalizedItems.map((n: any) => n.id)]));
                                   setSelectedApprovalIds(allIds);
                                 } else {
                                   const filteredSet = new Set(filteredNormalizedItems.map((n: any) => n.id));
                                   setSelectedApprovalIds(selectedApprovalIds.filter((id) => !filteredSet.has(id)));
+                                }
+                                const targetDwgNos = filteredNormalizedItems
+                                  .map((n: any) => n.drawing_no || n.raw_name)
+                                  .filter(Boolean);
+                                if (targetDwgNos.length > 0) {
+                                  handleToggleQuoteDrawing(targetDwgNos, checked);
                                 }
                               }}
                               className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -2961,12 +3014,14 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                     onChange={(e) => {
                                       const checked = e.target.checked;
                                       if (checked) {
-                                        setSelectedApprovalIds((prev) => [...prev, ni.id]);
+                                        setSelectedApprovalIds((prev) => Array.from(new Set([...prev, ni.id])));
                                       } else {
                                         setSelectedApprovalIds((prev) => prev.filter((id) => id !== ni.id));
                                       }
+                                      handleToggleQuoteDrawing([ni.drawing_no || ni.raw_name], checked);
                                     }}
                                     className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    title={selectedApprovalIds.includes(ni.id) ? '견적 포함 (클릭 시 견적 제외)' : '견적 제외 (클릭 시 견적 포함)'}
                                   />
                                 </td>
 
@@ -3132,16 +3187,40 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                               : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/60 bg-white'
                           }`}
                         >
-                          {/* Top Header: Drawing No Badge + Item Name + Status Badge */}
+                          {/* Top Header: Checkbox + Drawing No Badge + Item Name + Status Badge */}
                           <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex items-center space-x-1.5 flex-wrap">
-                                <span className="font-mono font-extrabold text-[11px] text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded border border-blue-200 shrink-0">
-                                  {ni.drawing_no || '도면번호 미지정'}
-                                </span>
-                                <h4 className="font-extrabold text-slate-900 text-xs truncate">
-                                  {ni.drawing_name || ni.normalized_name}
-                                </h4>
+                            <div className="min-w-0 space-y-1 flex items-start space-x-2">
+                              <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedApprovalIds.includes(ni.id)}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    if (checked) {
+                                      setSelectedApprovalIds((prev) => Array.from(new Set([...prev, ni.id])));
+                                    } else {
+                                      setSelectedApprovalIds((prev) => prev.filter((id) => id !== ni.id));
+                                    }
+                                    handleToggleQuoteDrawing([ni.drawing_no || ni.raw_name], checked);
+                                  }}
+                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                                  title={selectedApprovalIds.includes(ni.id) ? '견적 포함 (클릭 시 견적 제외)' : '견적 제외 (클릭 시 견적 포함)'}
+                                />
+                              </div>
+                              <div>
+                                <div className="flex items-center space-x-1.5 flex-wrap">
+                                  <span className="font-mono font-extrabold text-[11px] text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                                    {ni.drawing_no || '도면번호 미지정'}
+                                  </span>
+                                  <h4 className="font-extrabold text-slate-900 text-xs truncate">
+                                    {ni.drawing_name || ni.normalized_name}
+                                  </h4>
+                                  {ni.is_quote_included === 0 && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                                      견적 제외{ni.exclude_reason ? ` (${ni.exclude_reason})` : ''}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 

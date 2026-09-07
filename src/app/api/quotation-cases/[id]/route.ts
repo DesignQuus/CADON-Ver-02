@@ -18,10 +18,12 @@ export async function GET(
   const { id } = await params;
 
   const qc = db.prepare(`
-    SELECT qc.*, c.company_name, c.company_code, p.project_name, p.project_code
+    SELECT qc.*, c.company_name, c.company_code, p.project_name, p.project_code,
+           u.name as created_by_name
     FROM quotation_cases qc
     JOIN companies c ON qc.company_id = c.id
     JOIN projects p ON qc.project_id = p.id
+    LEFT JOIN users u ON qc.created_by_user_id = u.id
     WHERE qc.id = ?
   `).get(id) as any;
 
@@ -40,12 +42,39 @@ export async function GET(
     }
   }
 
-  // Fetch all related entities (Exclude internal render cache like VECTOR_SVG)
-  const files = db.prepare(`
+  // Fetch all related entities (Exclude internal conversion artifacts from user-facing files)
+  const allCaseFiles = db.prepare(`
     SELECT * FROM uploaded_files
-    WHERE quotation_case_id = ? AND file_role != 'VECTOR_SVG' AND file_type != 'SVG'
+    WHERE quotation_case_id = ?
     ORDER BY created_at ASC
-  `).all(id);
+  `).all(id) as any[];
+
+  // Primary source files (exclude internal conversion artifacts like DERIVED and VECTOR_SVG)
+  const sourceFiles = allCaseFiles.filter((f: any) => 
+    f.file_role !== 'VECTOR_SVG' && 
+    f.file_type !== 'SVG' && 
+    f.file_role !== 'DERIVED' && 
+    !f.original_file_name.endsWith('.svg') &&
+    !f.original_file_name.endsWith('.dwg.dxf')
+  );
+
+  // Deduplicate by original_file_name and attach conversion metadata
+  const files: any[] = [];
+  const seenFileNames = new Set<string>();
+  for (const sf of sourceFiles) {
+    if (!seenFileNames.has(sf.original_file_name)) {
+      seenFileNames.add(sf.original_file_name);
+      const derivedDxf = allCaseFiles.find((df: any) => 
+        (df.file_role === 'DERIVED' || df.file_type === 'DXF') &&
+        (df.derived_from_file_id === sf.id || df.original_file_name === `${sf.original_file_name}.dxf`)
+      );
+      files.push({
+        ...sf,
+        has_derived_dxf: !!derivedDxf,
+        derived_dxf_id: derivedDxf?.id || null
+      });
+    }
+  }
 
   // If case has no source files and no drawings, return clean initial state
   const existingDrawingsCount = db.prepare('SELECT COUNT(*) as cnt FROM drawings WHERE quotation_case_id = ?').get(id) as any;
@@ -84,6 +113,8 @@ export async function GET(
       COALESCE(d.scale, fb.specification, '-') as drawing_scale,
       COALESCE(d.material, fb.material, ni.material_candidate, 'SS400') as drawing_material,
       COALESCE(d.drawing_type, 'PART') as drawing_type,
+      COALESCE(d.is_quote_included, ni.is_quote_included, 1) as is_quote_included,
+      COALESCE(d.exclude_reason, ni.exclude_reason) as exclude_reason,
       d.id as matched_drawing_id,
       p.project_name,
       p.project_code,
@@ -101,6 +132,8 @@ export async function GET(
         scale,
         material,
         drawing_type,
+        is_quote_included,
+        exclude_reason,
         id
       FROM drawings
       GROUP BY quotation_case_id, drawing_no_raw
@@ -169,6 +202,7 @@ export async function GET(
     case: qc,
     permission,
     files,
+    allFiles: allCaseFiles,
     drawings,
     relationships,
     bomAreas,

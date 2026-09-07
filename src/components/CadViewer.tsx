@@ -1510,11 +1510,20 @@ export default function CadViewer({
           {selectedFile && (
             <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 bg-slate-950/90 border border-slate-800 rounded-xl text-xs text-slate-300 shadow-xs">
               <span className={`w-2 h-2 rounded-full shrink-0 ${drawings.length > 0 ? 'bg-emerald-400 ring-2 ring-emerald-400/30' : 'bg-amber-400 animate-pulse'}`} />
-              <span className="text-slate-400">선택 파일:</span>
-              <span className="font-bold text-white truncate max-w-[170px]">{selectedFile.original_file_name}</span>
-              <span className="px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-800/60 font-mono text-[10px]">
-                {selectedFile.file_type || 'CAD'}
+              <span className="text-slate-400">선택 도면:</span>
+              <span className="font-bold text-white truncate max-w-[200px]" title={selectedFile.original_file_name}>
+                {selectedFile.original_file_name}
               </span>
+              <span className="px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-800/60 font-mono text-[10px]">
+                {selectedFile.file_type === 'DWG' || selectedFile.original_file_name.endsWith('.dwg')
+                  ? 'DWG (DXF 렌더링)'
+                  : (selectedFile.file_type || 'CAD')}
+              </span>
+              {selectedDrawingIdx >= 0 && drawings[selectedDrawingIdx] && (
+                <span className="text-amber-300 font-mono font-bold text-[10px] bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/60 truncate max-w-[180px]" title={`${drawings[selectedDrawingIdx].drawing_no_raw}: ${drawings[selectedDrawingIdx].drawing_name_raw}`}>
+                  시트: {drawings[selectedDrawingIdx].drawing_no_raw}
+                </span>
+              )}
             </div>
           )}
         </div>

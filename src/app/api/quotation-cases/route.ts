@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const baseSelect = `
     SELECT qc.*, c.company_name, c.company_code, p.project_name, p.project_code,
       u.name as created_by_name,
-      (SELECT COUNT(*) FROM uploaded_files uf WHERE uf.quotation_case_id = qc.id) as files_count,
+      (SELECT COUNT(DISTINCT uf.original_file_name) FROM uploaded_files uf WHERE uf.quotation_case_id = qc.id AND uf.file_role = 'SOURCE') as files_count,
       (SELECT COUNT(*) FROM drawings d WHERE d.quotation_case_id = qc.id) as drawings_count,
       COALESCE(NULLIF((SELECT COUNT(*) FROM final_bom_items fbi WHERE fbi.quotation_case_id = qc.id), 0), (SELECT COUNT(*) FROM normalized_bom_items nbi WHERE nbi.quotation_case_id = qc.id), 0) as bom_items_count,
       (SELECT q.total_amount FROM quotes q WHERE q.quotation_case_id = qc.id ORDER BY q.quote_version DESC LIMIT 1) as quote_total_amount

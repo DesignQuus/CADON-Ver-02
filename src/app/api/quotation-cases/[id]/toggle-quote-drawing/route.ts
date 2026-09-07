@@ -68,6 +68,17 @@ export async function POST(
           SET is_quote_included = 0, exclude_reason = '중복 도면 (단일 품목 견적 반영)'
           WHERE id IN (${excludePlaceholders})
         `).run(...idsToExclude);
+
+        db.prepare(`
+          UPDATE normalized_bom_items
+          SET is_quote_included = 0, exclude_reason = '중복 도면 (단일 품목 견적 반영)'
+          WHERE quotation_case_id = ? AND id IN (
+            SELECT ni.id FROM normalized_bom_items ni
+            JOIN flattened_bom_items fb ON fb.id = REPLACE(ni.id, 'norm_', 'fb_')
+            JOIN drawings d ON d.quotation_case_id = ni.quotation_case_id AND (d.drawing_no_raw = fb.part_no OR d.drawing_no_normalized = fb.part_no)
+            WHERE d.id IN (${excludePlaceholders})
+          )
+        `).run(id, ...idsToExclude);
       }
 
       if (idsToInclude.length > 0) {
@@ -77,6 +88,17 @@ export async function POST(
           SET is_quote_included = 1, exclude_reason = NULL
           WHERE id IN (${includePlaceholders})
         `).run(...idsToInclude);
+
+        db.prepare(`
+          UPDATE normalized_bom_items
+          SET is_quote_included = 1, exclude_reason = NULL
+          WHERE quotation_case_id = ? AND id IN (
+            SELECT ni.id FROM normalized_bom_items ni
+            JOIN flattened_bom_items fb ON fb.id = REPLACE(ni.id, 'norm_', 'fb_')
+            JOIN drawings d ON d.quotation_case_id = ni.quotation_case_id AND (d.drawing_no_raw = fb.part_no OR d.drawing_no_normalized = fb.part_no)
+            WHERE d.id IN (${includePlaceholders})
+          )
+        `).run(id, ...idsToInclude);
       }
     } else if (Array.isArray(drawingNos) && drawingNos.length > 0) {
       const placeholders = drawingNos.map(() => '?').join(',');
@@ -89,8 +111,17 @@ export async function POST(
       db.prepare(`
         UPDATE normalized_bom_items
         SET is_quote_included = ?, exclude_reason = ?
-        WHERE quotation_case_id = ? AND (raw_name IN (${placeholders}) OR normalized_name IN (${placeholders}))
-      `).run(flagVal, excludeReasonStr, id, ...drawingNos, ...drawingNos);
+        WHERE quotation_case_id = ? AND id IN (
+          SELECT ni.id FROM normalized_bom_items ni
+          JOIN flattened_bom_items fb ON fb.id = REPLACE(ni.id, 'norm_', 'fb_')
+          WHERE ni.quotation_case_id = ? AND (
+            fb.part_no IN (${placeholders}) OR 
+            fb.name IN (${placeholders}) OR 
+            ni.raw_name IN (${placeholders}) OR 
+            ni.normalized_name IN (${placeholders})
+          )
+        )
+      `).run(flagVal, excludeReasonStr, id, id, ...drawingNos, ...drawingNos, ...drawingNos, ...drawingNos);
     }
 
     // 2. Synchronize with quotes and quote_items if a quote exists
