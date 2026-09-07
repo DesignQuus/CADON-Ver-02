@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Layers,
@@ -15,6 +16,7 @@ import {
   ChevronRight,
   ShieldAlert,
   ArrowRight,
+  ArrowLeft,
   Check
 } from 'lucide-react';
 
@@ -113,8 +115,14 @@ export default function LoginPage() {
         throw new Error(data.error || '로그인에 실패했습니다. 비밀번호를 확인해주세요.');
       }
 
-      // Redirect to main cases page
-      router.push('/cases');
+      // Redirect to main cases page or previous page
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const redirectUrl = params.get('redirect') || '/cases';
+        window.location.href = redirectUrl;
+      } else {
+        router.push('/cases');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -141,12 +149,14 @@ export default function LoginPage() {
     <div className="min-h-[85vh] flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-8">
       {/* Brand Header */}
       <div className="text-center max-w-xl mx-auto mb-6">
-        <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white mx-auto shadow-md mb-3">
-          <Layers className="w-8 h-8" />
-        </div>
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          CADON-BOM <span className="text-blue-600">AI</span>
-        </h1>
+        <Link href="/cases" className="inline-block group" title="견적의뢰 관리 메인 대시보드로 이동">
+          <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white mx-auto shadow-md mb-3 group-hover:scale-105 transition-transform">
+            <Layers className="w-8 h-8" />
+          </div>
+          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight group-hover:text-blue-600 transition-colors">
+            CADON-BOM <span className="text-blue-600">AI</span>
+          </h1>
+        </Link>
         <p className="mt-1.5 text-sm text-slate-600">
           CAD 도면 자동 분석 & BOM 견적 산출 엔터프라이즈 시스템
         </p>
@@ -154,6 +164,17 @@ export default function LoginPage() {
           <Info className="w-3.5 h-3.5" />
           <span>시스템 설명 및 시연용 로그인 모드 가동 중</span>
         </div>
+      </div>
+
+      {/* Direct link to main dashboard */}
+      <div className="mb-4">
+        <Link
+          href="/cases"
+          className="inline-flex items-center space-x-1.5 px-4 py-2 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-bold transition-all shadow-2xs group cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-transform" />
+          <span>← 로그인 건너뛰고 메인 화면(견적의뢰 관리)으로 이동</span>
+        </Link>
       </div>
 
       {/* Main Login Card */}
@@ -288,6 +309,18 @@ export default function LoginPage() {
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             <span>로그인 후 단가수정, 견적토글, 엑셀출력 등 모든 작업이 <strong>{selectedUser.name}</strong> 님의 활동 로그로 기록됩니다.</span>
           </span>
+        </div>
+
+        {/* Bottom Quick Return */}
+        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <Link
+            href="/cases"
+            className="text-xs text-slate-500 hover:text-blue-600 flex items-center space-x-1 font-medium transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>로그인하지 않고 메인 견적의뢰 목록 바로가기</span>
+          </Link>
+          <span className="text-[11px] text-slate-400">CADON-BOM AI Ver-02</span>
         </div>
       </div>
 

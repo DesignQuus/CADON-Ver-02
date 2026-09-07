@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   FileText, Upload, Play, CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft,
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Unlock, Sparkles, Building2,
-  Folder, Calendar, Check, X, ShieldAlert, ShieldCheck, Clock, Send, ArrowDown, Eye, Download, Info, Trash2,
+  Folder, Calendar, Check, X, ShieldAlert, ShieldCheck, Clock, Send, ArrowDown, ArrowLeft, Home, Eye, Download, Info, Trash2,
   Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin,
   Table, LayoutGrid, Filter, RotateCcw
 } from 'lucide-react';
@@ -1186,6 +1186,67 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
+      {/* Top Breadcrumb & Return to Main Navigation Bar */}
+      <div className="no-print print:hidden flex flex-wrap items-center justify-between gap-3 bg-white px-5 py-3 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <div className="flex items-center space-x-3">
+          <Link
+            href="/cases"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-700 font-bold text-xs transition-all shadow-2xs group cursor-pointer"
+            title="견적의뢰 관리 메인 목록(대시보드)으로 돌아가기"
+          >
+            <ArrowLeft className="w-4 h-4 text-blue-600 transition-transform group-hover:-translate-x-1" />
+            <span>← 견적의뢰 메인 목록으로</span>
+          </Link>
+          <span className="text-slate-300">|</span>
+          <nav className="flex items-center space-x-1.5 text-xs text-slate-500 font-medium">
+            <Link href="/cases" className="hover:text-blue-600 flex items-center space-x-1">
+              <Home className="w-3.5 h-3.5" />
+              <span>메인</span>
+            </Link>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            <Link href="/cases" className="hover:text-blue-600 font-semibold text-slate-600">
+              견적의뢰 관리
+            </Link>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-slate-900 font-bold font-mono">{qc.case_no}</span>
+            <span className="text-slate-500 truncate max-w-[220px]">({qc.case_name})</span>
+          </nav>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {/* Active User Quick Status */}
+          <div className="hidden md:flex items-center space-x-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs">
+            <span className="text-[11px] text-slate-400">현재 접속자:</span>
+            <span className="font-bold text-slate-800">
+              {user ? user.name : '비로그인 게스트'}
+            </span>
+            {user?.role === 'SUPER_ADMIN' ? (
+              <span className="px-1.5 py-0.2 bg-purple-100 text-purple-800 text-[10px] font-bold rounded">
+                최고관리자
+              </span>
+            ) : user ? (
+              <span className="px-1.5 py-0.2 bg-blue-100 text-blue-800 text-[10px] font-bold rounded">
+                {user.department || '영업담당'}
+              </span>
+            ) : null}
+            <Link
+              href="/login"
+              className="ml-1 text-[11px] text-blue-600 hover:text-blue-800 underline font-semibold"
+            >
+              담당자 변경
+            </Link>
+          </div>
+
+          <Link
+            href="/cases"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+          >
+            <Layers className="w-3.5 h-3.5 text-blue-400" />
+            <span>메인 대시보드</span>
+          </Link>
+        </div>
+      </div>
+
       {/* Top Banner */}
       <div className="no-print print:hidden bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1295,20 +1356,32 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {/* Quick Stats */}
-        <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-          <div className="text-center px-3 border-r border-slate-200">
-            <div className="text-xs text-slate-500 font-medium">도면 수</div>
-            <div className="text-lg font-bold text-slate-900">{drawings.length}</div>
-          </div>
-          <div className="text-center px-3 border-r border-slate-200">
-            <div className="text-xs text-slate-500 font-medium">추출 BOM</div>
-            <div className="text-lg font-bold text-slate-900">{flattenedBomItems.length}</div>
-          </div>
-          <div className="text-center px-3">
-            <div className="text-xs text-slate-500 font-medium">승인 품목</div>
-            <div className="text-lg font-bold text-blue-600">
-              {finalBomItems.filter((f: any) => f.approval_status === 'APPROVED').length} / {normalizedItems.length}
+        {/* Quick Return & Quick Stats */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <Link
+            href="/cases"
+            className="inline-flex items-center justify-center space-x-2 px-3.5 py-2.5 bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-bold text-slate-700 hover:text-blue-700 transition-all shadow-2xs group cursor-pointer"
+            title="견적의뢰 관리 전체 목록(대시보드)으로 이동"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-transform" />
+            <span>전체 견적 목록</span>
+          </Link>
+
+          {/* Quick Stats */}
+          <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <div className="text-center px-3 border-r border-slate-200">
+              <div className="text-xs text-slate-500 font-medium">도면 수</div>
+              <div className="text-lg font-bold text-slate-900">{drawings.length}</div>
+            </div>
+            <div className="text-center px-3 border-r border-slate-200">
+              <div className="text-xs text-slate-500 font-medium">추출 BOM</div>
+              <div className="text-lg font-bold text-slate-900">{flattenedBomItems.length}</div>
+            </div>
+            <div className="text-center px-3">
+              <div className="text-xs text-slate-500 font-medium">승인 품목</div>
+              <div className="text-lg font-bold text-blue-600">
+                {finalBomItems.filter((f: any) => f.approval_status === 'APPROVED').length} / {normalizedItems.length}
+              </div>
             </div>
           </div>
         </div>
@@ -1403,66 +1476,77 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       )}
 
       {/* Tabs Navigation */}
-      <div className="no-print print:hidden flex items-center space-x-2 border-b border-slate-200 pb-1 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('cad')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
-            activeTab === 'cad'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Upload className="w-4 h-4" />
-          <span>1. 도면등록 & 뷰어</span>
-        </button>
+      <div className="no-print print:hidden flex items-center justify-between border-b border-slate-200 pb-1 gap-2 overflow-x-auto">
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            onClick={() => setActiveTab('cad')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+              activeTab === 'cad'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Upload className="w-4 h-4" />
+            <span>1. 도면등록 & 뷰어</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('approval')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
-            activeTab === 'approval'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>2. 마스터 매칭 & 검수자 승인</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('approval')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+              activeTab === 'approval'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>2. 마스터 매칭 & 검수자 승인</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('quote')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
-            activeTab === 'quote'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Database className="w-4 h-4" />
-          <span>3. 견적서 산출 & 단가</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('quote')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+              activeTab === 'quote'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>3. 견적서 산출 & 단가</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('excel')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
-            activeTab === 'excel'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>4. 표준 견적서 미리보기 (PDF/Excel)</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('excel')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+              activeTab === 'excel'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>4. 표준 견적서 미리보기 (PDF/Excel)</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('structure')}
-          className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
-            activeTab === 'structure'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
+          <button
+            onClick={() => setActiveTab('structure')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-colors cursor-pointer shrink-0 ${
+              activeTab === 'structure'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>5. 도면구조 & 다단계 BOM</span>
+          </button>
+        </div>
+
+        <Link
+          href="/cases"
+          className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:border-blue-300 bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-700 font-bold text-xs transition-colors shrink-0 shadow-2xs group cursor-pointer"
+          title="견적의뢰 관리 메인 목록(대시보드)으로 돌아가기"
         >
-          <Layers className="w-4 h-4" />
-          <span>5. 도면구조 & 다단계 BOM</span>
-        </button>
+          <ArrowLeft className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-transform" />
+          <span>견적 목록 메인</span>
+        </Link>
       </div>
 
       {/* TAB 1: CAD File Upload & Viewer (PROMPT 03, 04, 05, 06, 18-R1, 18-R2) */}
@@ -1475,13 +1559,22 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   <Upload className="w-4 h-4 text-blue-600" />
                   <span>통합 도면 파일 등록</span>
                 </h2>
-                <button
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
-                  title="도면 등록 패널 접기"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+                <div className="flex items-center space-x-1">
+                  <Link
+                    href="/cases"
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-blue-600 transition-colors"
+                    title="메인 견적 목록으로 돌아가기"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </Link>
+                  <button
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title="도면 등록 패널 접기"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Unified Dropzone with Native Drag & Drop */}
