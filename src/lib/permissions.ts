@@ -7,6 +7,7 @@ export interface SystemApprovalSettings {
   cross_user_approve_policy: 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY';
   require_admin_final_quote_approval: number;
   approval_valid_hours: number;
+  is_approval_suspended?: number;
   updated_by_user_id?: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ export interface CasePermissionResult {
   ownerName: string;
   requiresApproval: boolean;
   approvalStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  isSuspended?: boolean;
   activeRequestId?: string;
   requestedAt?: string;
   reviewComment?: string;
@@ -51,16 +53,17 @@ export function getSystemApprovalSettings(): SystemApprovalSettings {
   db.prepare(`
     INSERT INTO system_approval_settings (
       id, cross_user_edit_policy, cross_user_approve_policy,
-      require_admin_final_quote_approval, approval_valid_hours, updated_at
-    ) VALUES ('GLOBAL_CONFIG', 'REQUIRE_APPROVAL', 'REQUIRE_APPROVAL', 0, 48, ?)
+      require_admin_final_quote_approval, approval_valid_hours, is_approval_suspended, updated_at
+    ) VALUES ('GLOBAL_CONFIG', 'ALLOW', 'ALLOW', 0, 48, 1, ?)
   `).run(now);
 
   return {
     id: 'GLOBAL_CONFIG',
-    cross_user_edit_policy: 'REQUIRE_APPROVAL',
-    cross_user_approve_policy: 'REQUIRE_APPROVAL',
+    cross_user_edit_policy: 'ALLOW',
+    cross_user_approve_policy: 'ALLOW',
     require_admin_final_quote_approval: 0,
     approval_valid_hours: 48,
+    is_approval_suspended: 1,
     updated_at: now
   };
 }
@@ -152,6 +155,23 @@ export function checkCasePermission(
   // 3. 다른 담당자의 견적건인 경우 (Cross-User Case)
   const settings = getSystemApprovalSettings();
   const userPerm = getUserApprovalPermissions(userId);
+
+  // 💡 최고관리자 결재 승인 기능 보류 (현재 개발/검수 단계) 또는 ALLOW 정책인 경우 -> 결재 없이 자유 견적 진행 허용
+  const isSuspended = settings.is_approval_suspended !== 0 || settings.cross_user_edit_policy === 'ALLOW';
+  if (isSuspended) {
+    return {
+      canEdit: true,
+      canApprove: true,
+      isOwner: false,
+      isSuperAdmin: false,
+      ownerUserId,
+      ownerName,
+      requiresApproval: false,
+      approvalStatus: 'APPROVED',
+      isSuspended: true,
+      message: '최고관리자 결재 승인 기능 보류 중: 결재 대기 없이 즉시 견적 진행 및 수정/승인이 가능합니다.'
+    };
+  }
 
   // 최고관리자 설정이 'ALLOW'이고 사용자 권한도 'ALLOW'인 경우 자유 수정
   if (settings.cross_user_edit_policy === 'ALLOW' && (!userPerm || userPerm.can_edit_others === 'ALLOW')) {

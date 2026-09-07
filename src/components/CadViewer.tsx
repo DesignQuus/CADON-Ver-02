@@ -182,6 +182,24 @@ export default function CadViewer({
   const [loadingSvg, setLoadingSvg] = useState(false);
   const [useHdVector, setUseHdVector] = useState(true);
 
+  // 💎 Export format states (.xls, .xlsx, .csv)
+  const [exportFormat, setExportFormat] = useState<'xls' | 'xlsx' | 'csv'>('xls');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close export format menu on outside click
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportMenu]);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch Ultra-High-Fidelity Vector SVG
@@ -432,33 +450,7 @@ export default function CadViewer({
     window.open(`/api/quotation-cases/${caseId}/export-package`, '_blank');
   };
 
-  // 5. Export Title Blocks to CSV / Excel
-  const handleExportTitleBlocksCsv = () => {
-    if (drawings.length === 0) return;
-    const headers = ['No', '구분', '도면번호(DWG)', '품명(Sub Name)', '프로젝트명', '고객사', '설계자', '설계일자', '축척', '개정(Rev)', '재질', '제조사'];
-    const rows = drawings.map((d, i) => [
-      i + 1,
-      d.drawing_type === 'MAIN_ASSEMBLY' ? '메인 조립도' : '단위 부품도',
-      `"${d.drawing_no_raw || ''}"`,
-      `"${d.drawing_name_raw || ''}"`,
-      `"${d.project_name || '인버터 조립 LINE'}"`,
-      `"${d.customer || 'A&G/보그워너'}"`,
-      `"${d.designer || '이경중'}"`,
-      `"${d.design_date || '24.03.15'}"`,
-      `"${d.scale || '1/1'}"`,
-      `"${d.revision || 'R00'}"`,
-      `"${d.material || 'SS400'}"`,
-      `"${d.company || '세창인터내쇼날(주)'}"`
-    ]);
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `도면_표제란_엑셀시트_${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // 5. Export Title Blocks to XLS / XLSX / CSV (defined after quoteSummary below)
 
   // 6. Global Bounds calculation from CAD objects
   const globalBounds = useMemo(() => {
@@ -1014,6 +1006,140 @@ export default function CadViewer({
       masterState
     };
   }, [hierarchicalDrawings, quoteItemMap, drawingMap]);
+
+  // 💎 5. Export Title Blocks to XLS (Excel 97-2003 BIFF8) / XLSX (Excel OpenXML) / CSV
+  const handleExportTitleBlocks = async (format: 'xls' | 'xlsx' | 'csv' = exportFormat) => {
+    const targetDrawings = (displayedDrawings && displayedDrawings.length > 0) ? displayedDrawings : drawings;
+    if (targetDrawings.length === 0) return;
+
+    setExportLoading(true);
+    try {
+      const XLSX = await import('xlsx');
+
+      const headers = [
+        'No',
+        '견적 구분',
+        '제외 사유',
+        '도면 구분 (계층 구조)',
+        '도면번호 (DWG No.)',
+        '품명 (Sub Name)',
+        '수량',
+        '단가 (원)',
+        '금액 (원)',
+        '프로젝트명',
+        '고객사',
+        '설계자',
+        '설계일자',
+        '축척',
+        '개정 (Rev)',
+        '재질 (Material)',
+        '제조사 / 회사'
+      ];
+
+      const rows = targetDrawings.map((d, i) => {
+        const info = getDrawingQuoteInfo(d);
+        const isMain = d.drawing_type === 'MAIN_ASSEMBLY';
+        const isSubAssy = d.drawing_type === 'SUB_ASSEMBLY';
+        const drawingTypeStr = isMain ? '메인 조립도' : isSubAssy ? '서브 조립도' : '단위 부품도';
+        const quoteStatusStr = info.isIncluded ? '포함' : '제외';
+        const excludeReasonStr = d.exclude_reason || (info.isIncluded ? '' : '견적 제외');
+
+        return [
+          i + 1,
+          quoteStatusStr,
+          excludeReasonStr,
+          drawingTypeStr,
+          d.drawing_no_raw || '',
+          d.drawing_name_raw || '',
+          info.quantity ?? 1,
+          info.unitPrice ?? 0,
+          info.amount ?? 0,
+          d.project_name || '인버터 조립 LINE',
+          d.customer || 'A&G/보그워너',
+          d.designer || '이경중',
+          d.design_date || '24.03.15',
+          d.scale || '1/1',
+          d.revision || 'R00',
+          d.material || 'SS400',
+          d.company || '세창인터내쇼날(주)'
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 6 },  // No
+        { wch: 10 }, // 견적 구분
+        { wch: 14 }, // 제외 사유
+        { wch: 16 }, // 도면 구분
+        { wch: 20 }, // 도면번호
+        { wch: 28 }, // 품명
+        { wch: 8 },  // 수량
+        { wch: 14 }, // 단가
+        { wch: 16 }, // 금액
+        { wch: 22 }, // 프로젝트명
+        { wch: 16 }, // 고객사
+        { wch: 10 }, // 설계자
+        { wch: 12 }, // 설계일자
+        { wch: 8 },  // 축척
+        { wch: 10 }, // 개정
+        { wch: 14 }, // 재질
+        { wch: 22 }  // 제조사
+      ];
+
+      // Format currency cells with thousands separator (#,##0)
+      for (let r = 1; r <= rows.length; r++) {
+        const uCell = XLSX.utils.encode_cell({ r, c: 7 });
+        if (ws[uCell]) ws[uCell].z = '#,##0';
+        const aCell = XLSX.utils.encode_cell({ r, c: 8 });
+        if (ws[aCell]) ws[aCell].z = '#,##0';
+      }
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '도면표제란목록');
+
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      const baseName = `도면_표제란_엑셀시트_${dateStr}_${timeStr}`;
+
+      const triggerDownload = (blob: Blob, filename: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      if (format === 'xls') {
+        const out = XLSX.write(wb, { bookType: 'biff8', type: 'array' });
+        const blob = new Blob([out], { type: 'application/vnd.ms-excel' });
+        triggerDownload(blob, `${baseName}.xls`);
+      } else if (format === 'xlsx') {
+        const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        triggerDownload(blob, `${baseName}.xlsx`);
+      } else {
+        const csvContent = '\uFEFF' + XLSX.utils.sheet_to_csv(ws);
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        triggerDownload(blob, `${baseName}.csv`);
+      }
+
+      setCadStatusMsg(`[성공] 도면 표제란 ${targetDrawings.length}개 항목을 .${format.toUpperCase()} 파일로 내보냈습니다.`);
+      setTimeout(() => setCadStatusMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      alert('엑셀 내보내기 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportTitleBlocksCsv = () => {
+    handleExportTitleBlocks('csv');
+  };
 
   // Instant Precision Zoom: Switches directly from Excel Sheet to CAD Vector Canvas!
   const handleZoomToRow = (dwg: any) => {
@@ -1788,14 +1914,113 @@ export default function CadViewer({
                 )}
               </div>
 
-              <button
-                onClick={handleExportTitleBlocksCsv}
-                className="px-2.5 py-1.5 bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer whitespace-nowrap"
-                title="표제란 목록을 엑셀(CSV) 파일로 다운로드"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>엑셀 내보내기</span>
-              </button>
+              {/* 💎 엑셀 내보내기 (XLS, XLSX, CSV 지원 드롭다운/스플릿 버튼) */}
+              <div className="relative inline-flex items-stretch rounded-lg shadow-xs" ref={exportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => handleExportTitleBlocks(exportFormat)}
+                  disabled={exportLoading}
+                  className="px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/60 hover:border-emerald-400 text-emerald-200 hover:text-white rounded-l-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                  title={`표제란 목록을 .${exportFormat.toUpperCase()} 형식으로 즉시 다운로드 (클릭 시 다운로드)`}
+                >
+                  {exportLoading ? (
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  )}
+                  <span>엑셀 내보내기 (.{exportFormat.toUpperCase()})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={exportLoading}
+                  className="px-1.5 py-1.5 bg-emerald-950/90 hover:bg-emerald-900 border-y border-r border-emerald-500/60 hover:border-emerald-400 text-emerald-300 hover:text-white rounded-r-lg text-xs font-bold transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
+                  title="내보내기 파일 포맷 선택 (.xls, .xlsx, .csv)"
+                >
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showExportMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* 포맷 선택 드롭다운 팝오버 */}
+                {showExportMenu && (
+                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-slate-900/95 border border-emerald-500/50 rounded-xl shadow-2xl z-50 py-1.5 text-xs animate-in fade-in slide-in-from-top-1 backdrop-blur-md">
+                    <div className="px-3 py-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800 flex items-center justify-between">
+                      <span>내보내기 포맷 선택</span>
+                      <span className="text-emerald-400 font-mono text-[9.5px]">기본: .xls</span>
+                    </div>
+
+                    {/* .XLS Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportFormat('xls');
+                        setShowExportMenu(false);
+                        handleExportTitleBlocks('xls');
+                      }}
+                      className={`w-full px-3 py-2 text-left hover:bg-emerald-950/70 hover:text-white flex items-center justify-between transition-colors cursor-pointer ${
+                        exportFormat === 'xls' ? 'text-emerald-300 font-bold bg-emerald-950/50' : 'text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="text-base">📊</span>
+                        <div>
+                          <div className="font-bold flex items-center space-x-1.5">
+                            <span>Excel 97-2003 (.xls)</span>
+                            <span className="text-[9px] px-1 py-0.2 bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
+                              기본
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400">구버전 & 최신 엑셀 완벽 호환</div>
+                        </div>
+                      </div>
+                      {exportFormat === 'xls' && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                    </button>
+
+                    {/* .XLSX Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportFormat('xlsx');
+                        setShowExportMenu(false);
+                        handleExportTitleBlocks('xlsx');
+                      }}
+                      className={`w-full px-3 py-2 text-left hover:bg-emerald-950/70 hover:text-white flex items-center justify-between transition-colors cursor-pointer ${
+                        exportFormat === 'xlsx' ? 'text-emerald-300 font-bold bg-emerald-950/50' : 'text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="text-base">📗</span>
+                        <div>
+                          <div className="font-bold">Excel 통합문서 (.xlsx)</div>
+                          <div className="text-[10px] text-slate-400">최신 Microsoft Office XML</div>
+                        </div>
+                      </div>
+                      {exportFormat === 'xlsx' && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                    </button>
+
+                    {/* .CSV Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportFormat('csv');
+                        setShowExportMenu(false);
+                        handleExportTitleBlocks('csv');
+                      }}
+                      className={`w-full px-3 py-2 text-left hover:bg-emerald-950/70 hover:text-white flex items-center justify-between transition-colors cursor-pointer ${
+                        exportFormat === 'csv' ? 'text-emerald-300 font-bold bg-emerald-950/50' : 'text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="text-base">📄</span>
+                        <div>
+                          <div className="font-bold">CSV 텍스트 (.csv)</div>
+                          <div className="text-[10px] text-slate-400">쉼표 구분 텍스트 (UTF-8 BOM)</div>
+                        </div>
+                      </div>
+                      {exportFormat === 'csv' && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={handleOpenSettingsModal}

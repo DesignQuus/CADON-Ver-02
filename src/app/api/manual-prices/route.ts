@@ -85,8 +85,47 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, list: results });
+    // Also query active Price Masters from price_masters + product_masters
+    let priceMasters: any[] = [];
+    try {
+      const pmQuery = `
+        SELECT 
+          pm.id as price_master_id,
+          p.id as master_id,
+          p.master_code,
+          p.standard_name,
+          p.category,
+          p.specification,
+          p.material,
+          p.unit,
+          pm.unit_price,
+          pm.price_type,
+          pm.currency,
+          pm.is_active,
+          CASE
+            WHEN LOWER(p.standard_name) = LOWER(?) OR LOWER(p.master_code) = LOWER(?) THEN 100
+            WHEN LOWER(p.standard_name) LIKE LOWER(?) OR LOWER(p.master_code) LIKE LOWER(?) THEN 60
+            WHEN LOWER(p.specification) LIKE LOWER(?) THEN 40
+            ELSE 10
+          END as match_score
+        FROM price_masters pm
+        JOIN product_masters p ON pm.master_id = p.id
+        WHERE pm.is_active = 1
+        ORDER BY match_score DESC, p.standard_name ASC
+      `;
+      priceMasters = db.prepare(pmQuery).all(name, name, `%${name}%`, `%${name}%`, `%${name}%`) as any[];
+    } catch (pmErr) {
+      console.warn('priceMasters fetch failed:', pmErr);
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      list: results, 
+      manualPrices: results,
+      priceMasters
+    });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Manual Price 조회 실패' }, { status: 500 });
+    return NextResponse.json({ error: error.message || '단가 조회 실패' }, { status: 500 });
   }
 }
+

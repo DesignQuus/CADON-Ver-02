@@ -7,7 +7,7 @@ import {
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Unlock, Sparkles, Building2,
   Folder, Calendar, Check, X, ShieldAlert, ShieldCheck, Clock, Send, ArrowDown, ArrowLeft, Home, Eye, Download, Info, Trash2,
   Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin,
-  Table, LayoutGrid, Filter, RotateCcw, User
+  Table, LayoutGrid, Filter, RotateCcw, User, AlertCircle
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
@@ -119,6 +119,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const [manualPriceInput, setManualPriceInput] = useState('');
   const [manualPriceReason, setManualPriceReason] = useState('');
   const [manualPriceHistory, setManualPriceHistory] = useState<any[]>([]);
+  const [priceMasterList, setPriceMasterList] = useState<any[]>([]);
+  const [modalActiveTab, setModalActiveTab] = useState<'MASTER' | 'MANUAL' | 'DIRECT'>('MASTER');
+  const [selectedMasterId, setSelectedMasterId] = useState<string | null>(null);
+  const [selectedPriceSource, setSelectedPriceSource] = useState<'PRICE_MASTER' | 'MANUAL_PRICE'>('PRICE_MASTER');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [applyScope, setApplyScope] = useState<'SINGLE' | 'ALL_SAME'>('SINGLE');
@@ -150,6 +154,24 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [quoteDropdownOpen]);
+
+  // 💎 Step 2 Quote Items Export States (.xls, .xlsx, .csv)
+  const [step2ExportFormat, setStep2ExportFormat] = useState<'xls' | 'xlsx' | 'csv'>('xls');
+  const [step2ShowExportMenu, setStep2ShowExportMenu] = useState(false);
+  const [step2ExportLoading, setStep2ExportLoading] = useState(false);
+  const step2ExportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (step2ExportRef.current && !step2ExportRef.current.contains(event.target as Node)) {
+        setStep2ShowExportMenu(false);
+      }
+    }
+    if (step2ShowExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [step2ShowExportMenu]);
 
   // 💎 Approval Workbench Tab Filter & View States
   const [approvalFilterTab, setApprovalFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'QUOTE_INCLUDED' | 'QUOTE_EXCLUDED'>('ALL');
@@ -194,6 +216,32 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       alert(e.message || '요청 전송 통신 오류');
     } finally {
       setRequestingApproval(false);
+    }
+  };
+
+  // 3-B. Bypass Super Admin Approval & Proceed Directly (최고관리자 결재 승인 없이 견적 진행)
+  const handleBypassApproval = async () => {
+    if (actionLoading) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/bypass-approval`, {
+        method: 'POST'
+      });
+      const resJson = await res.json();
+      if (res.ok) {
+        setApprovalFeedback({
+          type: 'success',
+          text: resJson.message || '최고관리자 결재 승인이 보류되어 결재 대기 없이 즉시 견적 작업이 활성화되었습니다.'
+        });
+        setTimeout(() => setApprovalFeedback(null), 6000);
+        await fetchData();
+      } else {
+        alert(resJson.error || '견적 진행 처리 실패');
+      }
+    } catch (err: any) {
+      alert('통신 오류: ' + err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -693,12 +741,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
   };
 
-  // 6. Manual Price Handlers (방안 A: 수기 단가 추천 및 자동 누적 풀)
-  const handleOpenManualPriceModal = async (item: any) => {
+  // 6. Manual Price & Price Master Handlers
+  const handleOpenManualPriceModal = async (item: any, initialTab: 'MASTER' | 'MANUAL' | 'DIRECT' = 'MASTER') => {
     setManualPriceModal(item);
     setManualPriceInput(item.unit_price > 0 ? Number(item.unit_price).toLocaleString() : '');
     setManualPriceReason(item.remark || '');
     setSelectedHistoryId(null);
+    setSelectedMasterId(item.master_id || null);
+    setSelectedPriceSource(item.price_source === 'MANUAL_PRICE' ? 'MANUAL_PRICE' : 'PRICE_MASTER');
+    setModalActiveTab(initialTab || (item.price_source === 'MANUAL_PRICE' ? 'MANUAL' : 'MASTER'));
     setApplyScope('SINGLE'); // Default to SINGLE (Safe mode: only this 1 item)
     setAutoIncludeInQuote(true);
     setLoadingHistory(true);
@@ -706,25 +757,37 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       const res = await fetch(`/api/manual-prices?name=${encodeURIComponent(item.item_name)}`);
       if (res.ok) {
         const json = await res.json();
-        const list = json.list || [];
-        setManualPriceHistory(list);
+        const manualList = json.manualPrices || json.list || [];
+        const masterList = json.priceMasters || [];
+        setManualPriceHistory(manualList);
+        setPriceMasterList(masterList);
         if (item.unit_price > 0) {
-          const matched = list.find((h: any) => h.unit_price === item.unit_price);
-          if (matched) setSelectedHistoryId(matched.id);
+          const matchedManual = manualList.find((h: any) => h.unit_price === item.unit_price);
+          if (matchedManual) setSelectedHistoryId(matchedManual.id);
+          const matchedMaster = masterList.find((m: any) => m.unit_price === item.unit_price || m.master_id === item.master_id);
+          if (matchedMaster) setSelectedMasterId(matchedMaster.master_id || matchedMaster.price_master_id);
         }
       } else {
         setManualPriceHistory([]);
+        setPriceMasterList([]);
       }
     } catch {
       setManualPriceHistory([]);
+      setPriceMasterList([]);
     } finally {
       setLoadingHistory(false);
     }
   };
 
-  const handleDirectApplyPrice = async (numPrice: number, reason: string) => {
+  const handleDirectApplyPrice = async (
+    numPrice: number,
+    reason: string,
+    source: 'PRICE_MASTER' | 'MANUAL_PRICE' = 'MANUAL_PRICE',
+    masterId?: string | null,
+    masterCode?: string | null
+  ) => {
     if (!manualPriceModal || actionLoading) return;
-    if (isNaN(numPrice) || numPrice <= 0) return;
+    if (isNaN(numPrice) || numPrice < 0) return;
 
     const currentModal = manualPriceModal;
     const applyToSame = applyScope === 'ALL_SAME';
@@ -736,7 +799,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setManualPriceInput('');
     setManualPriceReason('');
     setManualPriceHistory([]);
+    setPriceMasterList([]);
     setSelectedHistoryId(null);
+    setSelectedMasterId(null);
 
     // Optimistic UI Update (0ms instant response)
     setData((prev: any) => {
@@ -749,10 +814,12 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             ...item,
             unit_price: numPrice,
             amount: amt,
-            price_source: 'MANUAL_PRICE',
+            price_source: source,
             price_status: 'READY',
+            master_id: masterId || item.master_id,
+            master_code: masterCode || item.master_code,
             is_included: willInclude ? 1 : (autoIncludeInQuote ? item.is_included : 0),
-            remark: reason || 'Manual Price 적용'
+            remark: reason || (source === 'PRICE_MASTER' ? 'Price Master 적용' : 'Manual Price 적용')
           };
         }
         return item;
@@ -767,7 +834,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
       const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
         if (idx === 0) {
-          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+          return { ...q, is_locked: 0, status: 'DRAFT', subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
         }
         return q;
       });
@@ -778,6 +845,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         quotes: updatedQuotes,
         latestQuote: prev.latestQuote ? {
           ...prev.latestQuote,
+          is_locked: 0,
+          status: 'DRAFT',
           subtotal: activeSubtotal,
           tax_amount: taxAmount,
           total_amount: totalAmount
@@ -791,9 +860,12 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           unitPrice: numPrice,
-          remark: reason || 'Manual Price 적용',
+          remark: reason || (source === 'PRICE_MASTER' ? 'Price Master 적용' : 'Manual Price 적용'),
           isIncluded: willInclude,
-          applyToSameItems: applyToSame
+          applyToSameItems: applyToSame,
+          priceSource: source,
+          masterId: masterId || currentModal.master_id,
+          masterCode: masterCode || currentModal.master_code
         })
       });
       if (res.ok) {
@@ -819,10 +891,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       return;
     }
     const numPrice = Number(cleanStr);
-    await handleDirectApplyPrice(numPrice, manualPriceReason || 'Manual Price 적용');
+    await handleDirectApplyPrice(
+      numPrice,
+      manualPriceReason || (selectedPriceSource === 'PRICE_MASTER' ? 'Price Master 적용' : '수기 단가 직접 입력'),
+      selectedPriceSource,
+      selectedMasterId
+    );
   };
 
-  // 7. Approve Quote & Lock (PROMPT 14)
+  // 7. Approve Quote & Lock / Unlock Handlers
   const handleApproveQuote = async (quoteId: string) => {
     if (!confirm('이 견적서를 최종 승인하고 수정을 잠그시겠습니까?')) return;
     try {
@@ -837,6 +914,31 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       }
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleUnlockQuote = async (quoteId: string) => {
+    if (actionLoading) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotes/${quoteId}/unlock`, { method: 'POST' });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setData((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            latestQuote: prev.latestQuote ? { ...prev.latestQuote, is_locked: 0, status: 'DRAFT' } : prev.latestQuote
+          };
+        });
+        await fetchData();
+      } else {
+        alert(json.error || '잠금 해제에 실패했습니다.');
+      }
+    } catch (err: any) {
+      alert('통신 오류: ' + err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -931,9 +1033,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       );
       const idsToChange = new Set(itemsToMatch.map((m: any) => m.id));
       if (isIncluded) {
-        return Array.from(new Set([...prev, ...idsToChange]));
+        return Array.from(new Set([...prev, ...idsToChange])) as string[];
       } else {
-        return prev.filter((id) => !idsToChange.has(id));
+        return prev.filter((prevId) => !idsToChange.has(prevId));
       }
     });
 
@@ -1206,6 +1308,117 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  // 💎 9-1. Export Step 2 Quote Items to XLS / XLSX / CSV
+  const handleExportQuoteItems = async (format: 'xls' | 'xlsx' | 'csv' = step2ExportFormat) => {
+    if (quoteItems.length === 0) return;
+    setStep2ExportLoading(true);
+    try {
+      const XLSX = await import('xlsx');
+
+      const headers = [
+        'No',
+        '견적 구분',
+        '제외 사유',
+        '마스터 코드',
+        '도면 번호',
+        '품명 (Standard Name)',
+        '규격',
+        '재질',
+        '수량',
+        '단위',
+        '단가 (원)',
+        '금액 (원)',
+        '단가 출처',
+        '매칭 신뢰도'
+      ];
+
+      const targetItems = quoteFilterTab === 'INCLUDED'
+        ? quoteItems.filter((q: any) => q.is_included !== 0)
+        : quoteFilterTab === 'EXCLUDED'
+        ? quoteItems.filter((q: any) => q.is_included === 0)
+        : quoteItems;
+
+      const rows = targetItems.map((qi: any, i: number) => [
+        i + 1,
+        qi.is_included !== 0 ? '포함' : '제외',
+        qi.exclude_reason || (qi.is_included !== 0 ? '' : '견적 제외'),
+        qi.master_item_code || '',
+        qi.drawing_no || '',
+        qi.item_name || '',
+        qi.specification || '',
+        qi.material || '',
+        Number(qi.quantity || 1),
+        qi.unit || 'EA',
+        Number(qi.unit_price || 0),
+        Number(qi.amount || 0),
+        qi.price_source || 'AI_PREDICTED',
+        qi.match_confidence ? `${Math.round(qi.match_confidence * 100)}%` : '-'
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 6 },  // No
+        { wch: 10 }, // 견적 구분
+        { wch: 14 }, // 제외 사유
+        { wch: 16 }, // 마스터 코드
+        { wch: 18 }, // 도면 번호
+        { wch: 28 }, // 품명
+        { wch: 16 }, // 규격
+        { wch: 12 }, // 재질
+        { wch: 8 },  // 수량
+        { wch: 8 },  // 단위
+        { wch: 14 }, // 단가
+        { wch: 16 }, // 금액
+        { wch: 16 }, // 단가 출처
+        { wch: 12 }  // 신뢰도
+      ];
+
+      for (let r = 1; r <= rows.length; r++) {
+        const uCell = XLSX.utils.encode_cell({ r, c: 10 });
+        if (ws[uCell]) ws[uCell].z = '#,##0';
+        const aCell = XLSX.utils.encode_cell({ r, c: 11 });
+        if (ws[aCell]) ws[aCell].z = '#,##0';
+      }
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '견적품목목록');
+
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      const baseName = `견적품목목록_${latestQuote?.quote_no || id}_${dateStr}_${timeStr}`;
+
+      const triggerDownload = (blob: Blob, filename: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      if (format === 'xls') {
+        const out = XLSX.write(wb, { bookType: 'biff8', type: 'array' });
+        const blob = new Blob([out], { type: 'application/vnd.ms-excel' });
+        triggerDownload(blob, `${baseName}.xls`);
+      } else if (format === 'xlsx') {
+        const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        triggerDownload(blob, `${baseName}.xlsx`);
+      } else {
+        const csvContent = '\uFEFF' + XLSX.utils.sheet_to_csv(ws);
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        triggerDownload(blob, `${baseName}.csv`);
+      }
+    } catch (err: any) {
+      alert('엑셀 내보내기 오류: ' + err.message);
+    } finally {
+      setStep2ExportLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="text-center py-24 text-slate-500 font-medium">견적 워크벤치 로딩 중...</div>;
   }
@@ -1404,16 +1617,35 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 내 견적 담당건 (자유 수정·승인)
               </span>
+            ) : permission?.isSuspended ? (
+              <div className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-300">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  결재 보류 모드 (자유 견적 진행)
+                </span>
+              </div>
             ) : canEdit ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300">
                 <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
                 최고관리자 승인 완료 (수정 활성)
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                <Lock className="w-3.5 h-3.5 text-amber-600" />
-                타 담당자 건 ({ownerName})
-              </span>
+              <div className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  타 담당자 건 ({ownerName})
+                </span>
+                <button
+                  type="button"
+                  onClick={handleBypassApproval}
+                  disabled={actionLoading}
+                  className="btn-hover-effect px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50 transition-all"
+                  title="최고관리자 결재 승인 없이 즉시 견적 진행"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>결재 승인 없이 견적 진행</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -1532,7 +1764,35 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       {/* Cross-User Permission Notification Banner */}
       {!isOwner && (
         <div>
-          {canEdit ? (
+          {permission?.isSuspended ? (
+            <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-emerald-50 border-2 border-indigo-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                    <span>⚡ 최고관리자 결재 승인 기능 보류 중 (자유 견적 진행 모드)</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold px-2 py-0.2 rounded-full">
+                      수정·승인 자유 진행 활성
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 mt-0.5">
+                    현재 단계에서는 최고관리자 결재 승인 절차가 보류되어 있어, 타 담당자({ownerName} 님) 건도 결재 대기 없이 모든 담당자({user?.name})가 자유롭게 수정, BOM 승인 및 견적서를 산출할 수 있습니다.
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('approval')}
+                  className="btn-hover-effect px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <span>2. 마스터 매칭 & 승인 바로가기 ➡️</span>
+                </button>
+              </div>
+            </div>
+          ) : canEdit ? (
             <div className="bg-blue-50/90 border border-blue-300 rounded-xl p-3.5 flex items-center justify-between shadow-xs">
               <div className="flex items-center space-x-2.5">
                 <div className="w-8 h-8 rounded-lg bg-blue-100 border border-blue-300 flex items-center justify-center text-blue-700 shrink-0">
@@ -1552,7 +1812,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               </span>
             </div>
           ) : approvalStatus === 'PENDING' ? (
-            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5 flex items-center justify-between shadow-xs">
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center space-x-2.5">
                 <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shrink-0">
                   <Clock className="w-4 h-4 animate-spin text-amber-600" />
@@ -1563,13 +1823,25 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   </div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
                     {permission?.requestedAt ? `신청 일시: ${new Date(permission.requestedAt).toLocaleString('ko-KR')} | ` : ''}
-                    최고관리자가 승인 결재를 검토 중입니다. 승인 완료 시 자동으로 수정 권한이 부여됩니다.
+                    최고관리자가 승인 결재를 검토 중입니다. 아래 버튼을 눌러 승인 없이 즉시 견적을 진행할 수 있습니다.
                   </div>
                 </div>
               </div>
-              <span className="px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-300 shrink-0">
-                결재 대기 중
-              </span>
+              <div className="flex items-center space-x-2 shrink-0 flex-wrap gap-y-1">
+                <span className="px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-300 shrink-0">
+                  결재 대기 중
+                </span>
+                <button
+                  type="button"
+                  onClick={handleBypassApproval}
+                  disabled={actionLoading}
+                  className="btn-hover-effect px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
+                  title="최고관리자의 승인 대기를 건너뛰고 결재 승인 없이 즉시 견적 진행(수정/승인/산출)을 시작합니다."
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>최고관리자 결재 승인 없이 견적 진행 🚀</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
@@ -1579,7 +1851,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
                 <div>
                   <div className="text-xs font-bold text-amber-950 flex items-center gap-2">
-                    <span>타 담당자({ownerName} 님)의 견적 진행건 (수정 및 승인 잠금)</span>
+                    <span>타 담당자({ownerName} 님)의 견적 진행건</span>
                     {approvalStatus === 'REJECTED' && (
                       <span className="text-[10px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded border border-rose-300">
                         이전 요청 반려됨 {permission?.reviewComment ? `("${permission.reviewComment}")` : ''}
@@ -1587,17 +1859,29 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                     )}
                   </div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
-                    다른 담당자의 견적건 수정 및 승인은 <strong>최고관리자의 승인이 있어야만 가능</strong>합니다.
+                    다른 담당자의 견적건 수정 및 승인은 최고관리자의 승인이 필요하지만, <strong>결재 보류 모드로 즉시 진행</strong>할 수 있습니다.
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => setShowApprovalModal(true)}
-                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors flex items-center justify-center space-x-1.5 shrink-0 shadow-xs cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>최고관리자에게 수정/승인 권한 요청하기</span>
-              </button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleBypassApproval}
+                  disabled={actionLoading}
+                  className="btn-hover-effect px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
+                  title="최고관리자의 승인 없이 결재를 건너뛰고 즉시 견적 진행(수정/승인/산출)을 시작합니다."
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>최고관리자 결재 승인 없이 견적 진행 🚀</span>
+                </button>
+                <button
+                  onClick={() => setShowApprovalModal(true)}
+                  className="px-3 py-2 text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition-colors flex items-center justify-center space-x-1 shrink-0 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>결재 요청 양식</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1993,9 +2277,25 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
                 <div>
                   <span className="text-xs text-slate-500 block">견적상태</span>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                    {latestQuote.status} {latestQuote.is_locked ? '(잠금)' : ''}
-                  </span>
+                  <div className="flex items-center space-x-1.5 mt-0.5 flex-wrap gap-y-1">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      latestQuote.is_locked ? 'bg-amber-100 text-amber-850 border border-amber-300' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {latestQuote.status} {latestQuote.is_locked ? '(잠금)' : '(수정가능)'}
+                    </span>
+                    {latestQuote.is_locked ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUnlockQuote(latestQuote.id)}
+                        disabled={actionLoading}
+                        className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10.5px] font-bold inline-flex items-center space-x-1 cursor-pointer shadow-2xs transition-colors"
+                        title="견적서 잠금을 해제하여 단가 직접 수정 및 변경을 활성화합니다."
+                      >
+                        <Unlock className="w-2.5 h-2.5 shrink-0" />
+                        <span>수정 잠금해제</span>
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <div>
                   <span className="text-xs text-slate-500 block">공급가액 (Subtotal)</span>
@@ -2055,16 +2355,115 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   </button>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                   <button
                     type="button"
                     onClick={handleExcludeDuplicates}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer flex items-center space-x-1.5 shadow-2xs"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer flex items-center space-x-1.5 shadow-2xs shrink-0"
                     title="중복 배치된 도면 품목을 자동으로 감지하여 1건만 포함하고 나머지는 견적에서 일괄 제외합니다."
                   >
                     <Sparkles className="w-3.5 h-3.5 text-purple-600" />
                     <span>중복본 일괄 제외</span>
                   </button>
+
+                  {/* 💎 Step 2 품목 엑셀 내보내기 (.xls, .xlsx, .csv) */}
+                  <div className="relative inline-flex items-stretch rounded-xl shadow-xs shrink-0" ref={step2ExportRef}>
+                    <button
+                      type="button"
+                      onClick={() => handleExportQuoteItems(step2ExportFormat)}
+                      disabled={step2ExportLoading}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-l-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50 shadow-2xs"
+                      title={`현재 표시된 품목 목록을 .${step2ExportFormat.toUpperCase()} 형식으로 다운로드`}
+                    >
+                      {step2ExportLoading ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span>품목 엑셀 내보내기 (.{step2ExportFormat.toUpperCase()})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStep2ShowExportMenu(!step2ShowExportMenu)}
+                      disabled={step2ExportLoading}
+                      className="px-2 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-emerald-100 rounded-r-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
+                      title="내보내기 파일 포맷 선택 (.xls, .xlsx, .csv)"
+                    >
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${step2ShowExportMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {step2ShowExportMenu && (
+                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 text-xs animate-in fade-in slide-in-from-top-1">
+                        <div className="px-3 py-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                          <span>포맷 선택</span>
+                          <span className="text-emerald-600 font-mono text-[9.5px]">기본: .xls</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStep2ExportFormat('xls');
+                            setStep2ShowExportMenu(false);
+                            handleExportQuoteItems('xls');
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between transition-colors cursor-pointer ${
+                            step2ExportFormat === 'xls' ? 'text-emerald-700 font-bold bg-emerald-50' : 'text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className="text-base">📊</span>
+                            <div>
+                              <div className="font-bold flex items-center space-x-1.5">
+                                <span>Excel 97-2003 (.xls)</span>
+                                <span className="text-[9px] px-1 py-0.2 bg-emerald-100 text-emerald-800 rounded">추천</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">구버전 & 최신 엑셀 완벽 호환</div>
+                            </div>
+                          </div>
+                          {step2ExportFormat === 'xls' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStep2ExportFormat('xlsx');
+                            setStep2ShowExportMenu(false);
+                            handleExportQuoteItems('xlsx');
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between transition-colors cursor-pointer ${
+                            step2ExportFormat === 'xlsx' ? 'text-emerald-700 font-bold bg-emerald-50' : 'text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className="text-base">📗</span>
+                            <div>
+                              <div className="font-bold">Excel 통합문서 (.xlsx)</div>
+                              <div className="text-[10px] text-slate-400">최신 Microsoft Office XML</div>
+                            </div>
+                          </div>
+                          {step2ExportFormat === 'xlsx' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStep2ExportFormat('csv');
+                            setStep2ShowExportMenu(false);
+                            handleExportQuoteItems('csv');
+                          }}
+                          className={`w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between transition-colors cursor-pointer ${
+                            step2ExportFormat === 'csv' ? 'text-emerald-700 font-bold bg-emerald-50' : 'text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className="text-base">📄</span>
+                            <div>
+                              <div className="font-bold">CSV 텍스트 (.csv)</div>
+                              <div className="text-[10px] text-slate-400">쉼표 구분 텍스트 (UTF-8 BOM)</div>
+                            </div>
+                          </div>
+                          {step2ExportFormat === 'csv' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2269,24 +2668,27 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           </td>
                           <td
                             className={`py-1 px-3 font-mono text-right text-slate-800 transition-colors ${
-                              !latestQuote.is_locked && inlineEditId !== qi.id
-                                ? 'cursor-pointer hover:bg-blue-200/50'
+                              inlineEditId !== qi.id
+                                ? 'cursor-pointer hover:bg-blue-100/70'
                                 : ''
                             }`}
                             onClick={() => {
-                              if (!latestQuote.is_locked && inlineEditId !== qi.id) {
+                              if (latestQuote.is_locked) {
+                                handleUnlockQuote(latestQuote.id);
+                              }
+                              if (inlineEditId !== qi.id) {
                                 setInlineEditId(qi.id);
                                 setInlineEditValue(qi.unit_price > 0 ? Number(qi.unit_price).toLocaleString() : '');
                               }
                             }}
-                            title={!latestQuote.is_locked && inlineEditId !== qi.id ? '클릭하여 단가 바로 입력 (Enter/외부 클릭 시 자동 저장)' : undefined}
+                            title="클릭하여 단가 바로 입력 (Enter/외부 클릭/체크버튼 시 자동 저장)"
                           >
-                            {!latestQuote.is_locked && inlineEditId === qi.id ? (
+                            {inlineEditId === qi.id ? (
                               <div
-                                className="inline-flex items-center justify-end w-full relative"
+                                className="inline-flex items-center justify-end w-full relative space-x-1"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <span className="text-blue-500 font-bold text-xs mr-1 select-none">₩</span>
+                                <span className="text-blue-600 font-bold text-xs select-none">₩</span>
                                 <input
                                   type="text"
                                   inputMode="numeric"
@@ -2318,26 +2720,52 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                     }
                                   }}
                                   placeholder="0"
-                                  className="w-24 sm:w-28 px-2 py-0.5 bg-white border border-blue-500 rounded text-xs font-mono font-bold text-right text-slate-900 focus:outline-hidden ring-1 ring-blue-200"
+                                  className="w-24 sm:w-28 px-2 py-0.5 bg-white border-2 border-blue-500 rounded text-xs font-mono font-bold text-right text-slate-900 focus:outline-hidden ring-2 ring-blue-100 shadow-xs"
                                 />
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    isCancelledRef.current = false;
+                                    handleSaveInlinePrice(qi.id, inlineEditValue, false);
+                                  }}
+                                  className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded cursor-pointer shadow-2xs transition-colors"
+                                  title="저장 (Enter)"
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    isCancelledRef.current = true;
+                                    setInlineEditId(null);
+                                  }}
+                                  className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer shadow-2xs transition-colors"
+                                  title="취소 (Esc)"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
                               </div>
                             ) : qi.unit_price > 0 ? (
                               <div
-                                className="group/price inline-flex items-center justify-end space-x-1 font-mono font-bold text-slate-800 group-hover/price:text-blue-700 cursor-pointer"
+                                className="group/price inline-flex items-center justify-end space-x-1.5 font-mono font-bold text-slate-800 hover:text-blue-700 cursor-pointer"
                               >
                                 <span>₩{qi.unit_price.toLocaleString()}</span>
-                                {!latestQuote.is_locked && (
-                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/price:opacity-100 text-blue-500 transition-opacity" />
-                                )}
+                                <span className="text-[9.5px] px-1 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200 group-hover/price:bg-blue-600 group-hover/price:text-white transition-colors inline-flex items-center space-x-0.5 font-sans font-medium">
+                                  <Pencil className="w-2.5 h-2.5 shrink-0" />
+                                  <span>수정</span>
+                                </span>
                               </div>
                             ) : (
                               <div
-                                className="group/price inline-flex items-center justify-end space-x-1 font-mono font-semibold text-slate-400 group-hover/row:text-blue-600 cursor-pointer px-1.5 py-0.5 rounded-sm hover:bg-blue-100/80 transition-colors"
+                                className="group/price inline-flex items-center justify-end space-x-1.5 font-mono font-semibold text-rose-500 hover:text-rose-700 cursor-pointer px-1.5 py-0.5 rounded-sm hover:bg-rose-50 transition-colors"
                               >
-                                <span>0</span>
-                                {!latestQuote.is_locked && (
-                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover/price:opacity-100 text-blue-400 transition-opacity" />
-                                )}
+                                <span>₩0 (미등록)</span>
+                                <span className="text-[9.5px] px-1 py-0.2 rounded bg-rose-100 text-rose-700 border border-rose-200 group-hover/price:bg-rose-600 group-hover/price:text-white transition-colors inline-flex items-center space-x-0.5 font-sans font-medium animate-pulse">
+                                  <Pencil className="w-2.5 h-2.5 shrink-0" />
+                                  <span>입력</span>
+                                </span>
                               </div>
                             )}
                           </td>
@@ -2349,25 +2777,66 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                             )}
                           </td>
                           <td className="py-1.5 px-3 text-center">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              qi.price_source === 'MANUAL_PRICE'
-                                ? 'bg-blue-100 text-blue-800 font-semibold'
-                                : 'bg-slate-200/70 text-slate-700'
-                            }`}>
-                              {qi.price_source}
-                            </span>
-                          </td>
-                          <td className="py-1.5 px-3 text-center">
-                            {!latestQuote.is_locked && (
+                            {qi.price_source === 'PRICE_MASTER' || qi.price_source === 'STANDARD_PRICE' ? (
                               <button
-                                onClick={() => handleOpenManualPriceModal(qi)}
-                                className="px-2 py-0.5 bg-blue-50 group-hover/row:bg-blue-600 hover:bg-blue-700 text-blue-700 group-hover/row:text-white border border-blue-200 group-hover/row:border-blue-600 rounded text-[10px] font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center space-x-1 shrink-0"
-                                title="과거 수기 단가 이력 조회 및 Manual Price 적용"
+                                type="button"
+                                onClick={() => handleOpenManualPriceModal(qi, 'MASTER')}
+                                className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 hover:border-emerald-400 transition-colors cursor-pointer inline-flex items-center space-x-1 shadow-2xs"
+                                title="단가 마스터 (PRICE_MASTER) 활성 상태 (클릭 시 마스터 단가 변경 또는 수기 단가 전환)"
                               >
-                                <Database className="w-2.5 h-2.5 shrink-0" />
-                                <span>Manual Price 적용</span>
+                                <Sparkles className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                <span>단가 마스터 (활성)</span>
+                              </button>
+                            ) : qi.price_source === 'MANUAL_PRICE' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenManualPriceModal(qi, 'MANUAL')}
+                                className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 hover:border-blue-400 transition-colors cursor-pointer inline-flex items-center space-x-1 shadow-2xs"
+                                title="수기 단가 (MANUAL_PRICE) 적용 상태 (클릭 시 단가 재입력 또는 마스터 전환)"
+                              >
+                                <Pencil className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                                <span>수기 단가 (Manual)</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenManualPriceModal(qi, 'DIRECT')}
+                                className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 hover:border-amber-400 transition-colors cursor-pointer inline-flex items-center space-x-1 shadow-2xs animate-pulse"
+                                title="단가 미등록 상태 (클릭하여 단가 직접 입력 또는 마스터 매칭)"
+                              >
+                                <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                <span>단가 미등록 (클릭)</span>
                               </button>
                             )}
+                          </td>
+                          <td className="py-1.5 px-3 text-center">
+                            <div className="flex items-center justify-center space-x-1.5 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (latestQuote.is_locked) {
+                                    handleUnlockQuote(latestQuote.id);
+                                  }
+                                  setInlineEditId(qi.id);
+                                  setInlineEditValue(qi.unit_price > 0 ? Number(qi.unit_price).toLocaleString() : '');
+                                }}
+                                className="px-2 py-0.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 hover:border-blue-400 rounded text-[10.5px] font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center space-x-1 shrink-0"
+                                title="단가 직접 수정 (행에서 즉시 입력)"
+                              >
+                                <Pencil className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                                <span>단가 수정</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenManualPriceModal(qi, 'MASTER')}
+                                className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 hover:border-indigo-600 rounded text-[10.5px] font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center space-x-1 shrink-0"
+                                title="Price Master 조회 및 수기 단가 이력 풀 매칭"
+                              >
+                                <Database className="w-2.5 h-2.5 shrink-0" />
+                                <span>Price Master / 수기</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2412,9 +2881,21 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                       <span>최종 견적 승인 및 잠금 (Lock)</span>
                     </button>
                   ) : (
-                    <div className="flex items-center space-x-1.5 text-emerald-700 text-xs font-bold">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>최종 승인 완료 (수정 잠금 상태)</span>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1.5 text-emerald-700 text-xs font-bold bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>최종 승인 완료 (수정 잠금 상태)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleUnlockQuote(latestQuote.id)}
+                        disabled={actionLoading}
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer transition-colors"
+                        title="견적서 잠금을 해제하여 단가 직접 수정 및 검토를 다시 진행합니다."
+                      >
+                        <Unlock className="w-4 h-4" />
+                        <span>수정 잠금 해제 (DRAFT 복귀)</span>
+                      </button>
                     </div>
                   )}
 
@@ -3606,18 +4087,18 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
       {manualPriceModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-bold text-xs rounded-md">
-                    Manual Price
+                  <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-xs rounded-md">
+                    Price Master & Manual Price
                   </span>
-                  <h3 className="text-base font-bold text-slate-900">수기 단가 적용 & 추천 이력</h3>
+                  <h3 className="text-base font-bold text-slate-900">단가 마스터 조회 & 수기 단가 설정</h3>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  과거 적용된 Manual Price 리스트를 조회하여 원클릭으로 선택하거나, 신규 단가를 직접 입력하여 적용합니다.
+                  표준 Price Master(단가 마스터)에서 선택하거나, 과거 수기 단가 이력 조회 및 신규 단가를 직접 입력하여 적용합니다.
                 </p>
               </div>
               <button
@@ -3633,116 +4114,306 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900 text-sm">{manualPriceModal.item_name}</span>
-                <span className="font-mono text-slate-500 font-semibold">{manualPriceModal.master_code || '미등록'}</span>
+                <span className="font-mono text-slate-600 font-semibold bg-white px-2 py-0.5 rounded border border-slate-200">
+                  마스터코드: {manualPriceModal.master_code || '미등록'}
+                </span>
               </div>
-              <div className="text-slate-600 flex items-center space-x-3 text-[11px]">
+              <div className="text-slate-600 flex items-center space-x-3 text-[11px] flex-wrap gap-y-1">
                 <span>규격: <strong className="text-slate-800">{manualPriceModal.specification || '-'}</strong></span>
                 <span>재질: <strong className="text-slate-800">{manualPriceModal.material || '-'}</strong></span>
                 <span>수량: <strong className="text-slate-800 font-mono">{manualPriceModal.quantity} {manualPriceModal.unit}</strong></span>
+                <span>현재단가: <strong className="text-blue-700 font-mono font-bold">₩{Number(manualPriceModal.unit_price || 0).toLocaleString()}</strong></span>
+                <span>현재출처: <strong className="text-slate-700 font-bold">{manualPriceModal.price_source || '미지정'}</strong></span>
               </div>
             </div>
 
-            {/* Past Manual Price Candidates / Recommendation List */}
-            <div className="space-y-2">
+            {/* Tab Navigation: MASTER vs MANUAL vs DIRECT */}
+            <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalActiveTab('MASTER');
+                  setSelectedPriceSource('PRICE_MASTER');
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                  modalActiveTab === 'MASTER'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>📊 표준 단가 마스터 ({priceMasterList.length}건)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setModalActiveTab('MANUAL');
+                  setSelectedPriceSource('MANUAL_PRICE');
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                  modalActiveTab === 'MANUAL'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>📚 수기 단가 이력 ({manualPriceHistory.length}건)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalActiveTab('DIRECT')}
+                className={`flex-1 py-1.5 px-3 rounded-lg transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                  modalActiveTab === 'DIRECT'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>✏️ 신규 단가 직접 입력</span>
+              </button>
+            </div>
+
+            {/* Tab 1: Price Master List */}
+            {modalActiveTab === 'MASTER' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>등록된 Price Master 단가 목록</span>
+                  </h4>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    클릭: 선택 / 더블클릭: 즉시 단가 마스터 적용 및 닫기
+                  </span>
+                </div>
+
+                {loadingHistory ? (
+                  <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl flex items-center justify-center space-x-2 border border-slate-100">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                    <span>Price Master 불러오는 중...</span>
+                  </div>
+                ) : priceMasterList.length > 0 ? (
+                  <div className="max-h-52 overflow-y-auto space-y-2 pr-1 p-1">
+                    {priceMasterList.map((m: any) => {
+                      const isSelected = selectedMasterId === (m.master_id || m.price_master_id);
+                      return (
+                        <div
+                          key={m.price_master_id || m.id}
+                          onClick={() => {
+                            setSelectedMasterId(m.master_id || m.price_master_id);
+                            setSelectedPriceSource('PRICE_MASTER');
+                            setManualPriceInput(Number(m.unit_price).toLocaleString());
+                            setManualPriceReason(`Price Master [${m.master_code}] 표준 단가 적용`);
+                          }}
+                          onDoubleClick={() => {
+                            handleDirectApplyPrice(
+                              Number(m.unit_price),
+                              `Price Master [${m.master_code}] 표준 단가 적용`,
+                              'PRICE_MASTER',
+                              m.master_id,
+                              m.master_code
+                            );
+                          }}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group select-none ${
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50/90 ring-2 ring-emerald-500/25 shadow-xs'
+                              : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 bg-white hover:shadow-2xs'
+                          }`}
+                          title="클릭 시 선택 및 입력창 반영 | 더블클릭 시 이 마스터 단가로 즉시 적용하고 창 닫기"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1 mr-3">
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                              <span className="font-mono text-xs font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+                                {m.master_code}
+                              </span>
+                              <span className={`font-bold text-xs ${isSelected ? 'text-emerald-950 font-extrabold' : 'text-slate-900 group-hover:text-emerald-700'}`}>
+                                {m.standard_name}
+                              </span>
+                              {m.specification && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">
+                                  {m.specification}
+                                </span>
+                              )}
+                              {m.material && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">
+                                  {m.material}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              분류: {m.category || '표준가공품'} | 단가 유형: {m.price_type || 'STANDARD'}
+                            </p>
+                          </div>
+
+                          <div className="text-right shrink-0 flex flex-col items-end space-y-1">
+                            <div className="flex items-center space-x-1.5">
+                              {isSelected ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white flex items-center space-x-1 shadow-2xs">
+                                  <Check className="w-2.5 h-2.5" />
+                                  <span>선택됨 (더블클릭 즉시적용)</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-emerald-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  더블클릭 즉시적용 ➔
+                                </span>
+                              )}
+                              <span className={`font-mono text-sm ${
+                                isSelected
+                                  ? 'font-extrabold text-emerald-700'
+                                  : 'font-bold text-emerald-600 group-hover:text-emerald-700'
+                              }`}>
+                                ₩{Number(m.unit_price).toLocaleString()}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400">
+                              단위: {m.unit || 'EA'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    등록된 Price Master 단가가 없습니다. 수기 단가 또는 직접 입력을 이용하세요.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: Manual Price History List */}
+            {modalActiveTab === 'MANUAL' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                    <Database className="w-3.5 h-3.5 text-blue-600" />
+                    <span>과거 적용된 Manual Price 추천 이력 ({manualPriceHistory.length}건)</span>
+                  </h4>
+                  <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                    클릭: 선택 / 더블클릭: 즉시 수기 단가 적용 및 닫기
+                  </span>
+                </div>
+
+                {loadingHistory ? (
+                  <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl flex items-center justify-center space-x-2 border border-slate-100">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                    <span>추천 리스트 불러오는 중...</span>
+                  </div>
+                ) : manualPriceHistory.length > 0 ? (
+                  <div className="max-h-52 overflow-y-auto space-y-2 pr-1 p-1">
+                    {manualPriceHistory.map((item: any) => {
+                      const isSelected = selectedHistoryId === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedHistoryId(item.id);
+                            setSelectedPriceSource('MANUAL_PRICE');
+                            setManualPriceInput(Number(item.unit_price).toLocaleString());
+                            setManualPriceReason(item.remark || '과거 Manual Price 이력 적용');
+                          }}
+                          onDoubleClick={() => {
+                            handleDirectApplyPrice(Number(item.unit_price), item.remark || '과거 Manual Price 이력 적용', 'MANUAL_PRICE');
+                          }}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group select-none ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50/90 ring-2 ring-blue-500/25 shadow-xs'
+                              : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 bg-white hover:shadow-2xs'
+                          }`}
+                          title="클릭 시 선택 및 입력창 반영 | 더블클릭 시 이 단가로 즉시 적용하고 창 닫기"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1 mr-3">
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                              <span className={`font-bold text-xs ${isSelected ? 'text-blue-900 font-extrabold' : 'text-slate-900 group-hover:text-blue-700'}`}>
+                                {item.item_name}
+                              </span>
+                              {item.specification && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">
+                                  {item.specification}
+                                </span>
+                              )}
+                              {item.material && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">
+                                  {item.material}
+                                </span>
+                              )}
+                            </div>
+                            <p className={`text-[11px] truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-500'}`}>
+                              사유: {item.remark || '-'}
+                            </p>
+                          </div>
+
+                          <div className="text-right shrink-0 flex flex-col items-end space-y-1">
+                            <div className="flex items-center space-x-1.5">
+                              {isSelected ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white flex items-center space-x-1 shadow-2xs">
+                                  <Check className="w-2.5 h-2.5" />
+                                  <span>선택됨 (더블클릭 즉시적용)</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-blue-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                  더블클릭 즉시적용 ➔
+                                </span>
+                              )}
+                              <span className={`font-mono text-sm ${
+                                isSelected
+                                  ? 'font-extrabold text-blue-700'
+                                  : 'font-bold text-blue-600 group-hover:text-blue-700'
+                              }`}>
+                                ₩{Number(item.unit_price).toLocaleString()}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400">
+                              {item.created_at?.slice(0, 10)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    등록된 과거 Manual Price 이력이 없습니다. 아래에서 직접 입력하시면 풀(Pool)에 자동 저장됩니다.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Input Form & Confirmation Section */}
+            <div className="space-y-3 pt-2 border-t border-slate-200">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Manual Price 추천 이력 ({manualPriceHistory.length}건)</span>
-                </h4>
-                <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                  클릭: 자동 입력 / 더블클릭: 즉시 적용 및 닫기
-                </span>
+                <span className="text-xs font-bold text-slate-700">단가 적용 설정:</span>
+                <div className="flex items-center space-x-2 text-xs font-bold">
+                  <label className="flex items-center space-x-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="selectedPriceSource"
+                      value="PRICE_MASTER"
+                      checked={selectedPriceSource === 'PRICE_MASTER'}
+                      onChange={() => setSelectedPriceSource('PRICE_MASTER')}
+                      className="text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span className={selectedPriceSource === 'PRICE_MASTER' ? 'text-emerald-700 font-bold' : 'text-slate-600'}>
+                      ✨ Price Master로 저장
+                    </span>
+                  </label>
+                  <label className="flex items-center space-x-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="selectedPriceSource"
+                      value="MANUAL_PRICE"
+                      checked={selectedPriceSource === 'MANUAL_PRICE'}
+                      onChange={() => setSelectedPriceSource('MANUAL_PRICE')}
+                      className="text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className={selectedPriceSource === 'MANUAL_PRICE' ? 'text-blue-700 font-bold' : 'text-slate-600'}>
+                      ✏️ Manual Price로 저장
+                    </span>
+                  </label>
+                </div>
               </div>
 
-              {loadingHistory ? (
-                <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl flex items-center justify-center space-x-2 border border-slate-100">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                  <span>추천 리스트 불러오는 중...</span>
-                </div>
-              ) : manualPriceHistory.length > 0 ? (
-                <div className="max-h-52 overflow-y-auto space-y-2 pr-1 p-1">
-                  {manualPriceHistory.map((item: any) => {
-                    const isSelected = selectedHistoryId === item.id;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          setSelectedHistoryId(item.id);
-                          setManualPriceInput(Number(item.unit_price).toLocaleString());
-                          setManualPriceReason(item.remark || '과거 Manual Price 이력 적용');
-                        }}
-                        onDoubleClick={() => {
-                          handleDirectApplyPrice(Number(item.unit_price), item.remark || '과거 Manual Price 이력 적용');
-                        }}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group select-none ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-50/90 ring-2 ring-blue-500/25 shadow-xs'
-                            : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 bg-white hover:shadow-2xs'
-                        }`}
-                        title="클릭 시 단가/사유 입력창 반영 | 더블클릭 시 이 단가로 즉시 적용하고 창 닫기"
-                      >
-                        <div className="space-y-1 min-w-0 flex-1 mr-3">
-                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                            <span className={`font-bold text-xs ${isSelected ? 'text-blue-900 font-extrabold' : 'text-slate-900 group-hover:text-blue-700'}`}>
-                              {item.item_name}
-                            </span>
-                            {item.specification && (
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                                isSelected ? 'bg-white text-blue-800 border-blue-200 font-medium' : 'bg-slate-50 text-slate-600 border-slate-200'
-                              }`}>
-                                {item.specification}
-                              </span>
-                            )}
-                            {item.material && (
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                                isSelected ? 'bg-white text-blue-800 border-blue-200 font-medium' : 'bg-slate-50 text-slate-600 border-slate-200'
-                              }`}>
-                                {item.material}
-                              </span>
-                            )}
-                          </div>
-                          <p className={`text-[11px] truncate ${isSelected ? 'text-blue-700 font-medium' : 'text-slate-500'}`}>
-                            사유: {item.remark || '-'}
-                          </p>
-                        </div>
-
-                        <div className="text-right shrink-0 flex flex-col items-end space-y-1">
-                          <div className="flex items-center space-x-1.5">
-                            {isSelected ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white flex items-center space-x-1 shadow-2xs">
-                                <Check className="w-2.5 h-2.5" />
-                                <span>선택됨 (더블클릭 즉시적용)</span>
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-blue-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                                더블클릭 즉시적용 ➔
-                              </span>
-                            )}
-                            <span className={`font-mono text-sm ${
-                              isSelected
-                                ? 'font-extrabold text-blue-700'
-                                : 'font-bold text-blue-600 group-hover:text-blue-700'
-                            }`}>
-                              ₩{Number(item.unit_price).toLocaleString()}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-slate-400">
-                            {item.created_at?.slice(0, 10)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  등록된 과거 Manual Price 이력이 없습니다. 아래에서 직접 입력하시면 풀(Pool)에 자동 저장됩니다.
-                </div>
-              )}
-            </div>
-
-            {/* Input Form */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -3766,28 +4437,20 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    입력 사유 (비고)
+                    적용 사유 / 비고
                   </label>
                   <input
                     type="text"
                     value={manualPriceReason}
                     onChange={(e) => setManualPriceReason(e.target.value)}
-                    placeholder="예: 외주 임가공비 협의가, 원자재 시세 반영 등"
+                    placeholder="예: Price Master 표준 단가 적용, 임가공비 협의가 등"
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
               </div>
 
-              <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-blue-800 flex items-start space-x-1.5">
-                <Info className="w-3.5 h-3.5 text-blue-600 mt-0.5 shrink-0" />
-                <span>
-                  <strong>방안 A 자동 학습:</strong> 지금 적용한 단가와 사유는 회사의 <strong>Manual Price 풀</strong>에 자동 저장되어, 다음 번 견적 시 유사 부품 추천 리스트로 제공됩니다.
-                </span>
-              </div>
-
-              {/* Application Scope & Quote Inclusion Options */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                {/* Auto include in quote toggle */}
+              {/* Scope selection & Quote inclusion */}
+              <div className="space-y-2.5 pt-1 border-t border-slate-100">
                 <label className="flex items-center space-x-2 text-xs font-semibold text-slate-800 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -3801,12 +4464,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   </span>
                 </label>
 
-                {/* Scope selection: SINGLE vs ALL_SAME */}
                 {(() => {
                   const sameCount = (quoteItems || []).filter((q: any) => q.item_name === manualPriceModal?.item_name).length;
                   return (
                     <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                      <div className="text-[11px] font-bold text-slate-600">단가 및 견적 적용 범위 선택:</div>
+                      <div className="text-[11px] font-bold text-slate-600">적용 범위:</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label
                           className={`flex items-start space-x-2 p-2.5 rounded-xl border cursor-pointer select-none transition-all ${
@@ -3826,7 +4488,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           <div className="text-xs leading-tight">
                             <div className="font-bold flex items-center space-x-1">
                               <span>현재 품목 1건만 적용</span>
-                              <span className="text-[10px] px-1 py-0.2 bg-blue-100 text-blue-800 rounded font-semibold">기본(안전)</span>
+                              <span className="text-[10px] px-1 py-0.2 bg-blue-100 text-blue-800 rounded font-semibold">기본</span>
                             </div>
                             <div className="text-[10.5px] text-slate-500 font-normal mt-1">
                               No. {manualPriceModal?.item_no} ({manualPriceModal?.quantity} {manualPriceModal?.unit})에만 적용
@@ -3882,10 +4544,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 type="button"
                 onClick={handleSaveManualPrice}
                 disabled={actionLoading}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
               >
                 {actionLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                <span>Manual Price 확정 및 적용</span>
+                <span>단가 확정 및 견적서 반영</span>
               </button>
             </div>
           </div>

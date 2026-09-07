@@ -545,6 +545,7 @@ export function initializeDatabase() {
       cross_user_approve_policy TEXT NOT NULL DEFAULT 'REQUIRE_APPROVAL',
       require_admin_final_quote_approval INTEGER NOT NULL DEFAULT 0,
       approval_valid_hours INTEGER NOT NULL DEFAULT 48,
+      is_approval_suspended INTEGER NOT NULL DEFAULT 1, -- 1: 최고관리자 결재 보류 모드(자유 견적 진행), 0: 결재 필수
       updated_by_user_id TEXT,
       updated_at TEXT NOT NULL
     );

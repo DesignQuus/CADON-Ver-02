@@ -20,8 +20,12 @@ export async function PATCH(
   }
 
   const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(item.quote_id) as any;
+  let wasUnlocked = false;
   if (quote.is_locked) {
-    return NextResponse.json({ error: '승인 완료되어 잠긴 견적서는 직접 수정할 수 없습니다. 새 버전을 생성해주세요.' }, { status: 400 });
+    // Auto-unlock quote to DRAFT for seamless price modification
+    db.prepare("UPDATE quotes SET is_locked = 0, status = 'DRAFT', updated_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), quote.id);
+    wasUnlocked = true;
   }
 
   // Permission Guard
@@ -36,18 +40,20 @@ export async function PATCH(
 
   try {
     const body = await req.json();
-    const { unitPrice, remark, isIncluded, applyToSameItems } = body;
+    const { unitPrice, remark, isIncluded, applyToSameItems, priceSource, masterId, masterCode } = body;
     const newPrice = Number(unitPrice);
     const newAmount = Math.round(item.quantity * newPrice);
     // Automatically set is_included = 1 when price is set or when explicitly requested
     const includeFlag = (isIncluded !== undefined) ? (isIncluded ? 1 : 0) : (newPrice > 0 ? 1 : (item.is_included ?? 1));
+    const effectiveSource = priceSource || (masterId ? 'PRICE_MASTER' : 'MANUAL_PRICE');
 
     // Update Primary Quote Item
     db.prepare(`
       UPDATE quote_items
-      SET unit_price = ?, amount = ?, price_source = 'MANUAL_PRICE', price_status = 'READY', remark = ?, is_included = ?
+      SET unit_price = ?, amount = ?, price_source = ?, price_status = 'READY', remark = ?, is_included = ?,
+          master_id = COALESCE(?, master_id), master_code = COALESCE(?, master_code)
       WHERE id = ?
-    `).run(newPrice, newAmount, remark || item.remark || '수기 단가 입력', includeFlag, id);
+    `).run(newPrice, newAmount, effectiveSource, remark || item.remark || (effectiveSource === 'PRICE_MASTER' ? '마스터 단가 적용' : '수기 단가 입력'), includeFlag, masterId || null, masterCode || null, id);
 
     // Optionally apply to identical items in the same quote
     const updatedIds = [id];
@@ -61,15 +67,16 @@ export async function PATCH(
         const sAmount = Math.round(s.quantity * newPrice);
         db.prepare(`
           UPDATE quote_items
-          SET unit_price = ?, amount = ?, price_source = 'MANUAL_PRICE', price_status = 'READY', remark = ?, is_included = ?
+          SET unit_price = ?, amount = ?, price_source = ?, price_status = 'READY', remark = ?, is_included = ?,
+              master_id = COALESCE(?, master_id), master_code = COALESCE(?, master_code)
           WHERE id = ?
-        `).run(newPrice, sAmount, remark || item.remark || '수기 단가 적용', includeFlag, s.id);
+        `).run(newPrice, sAmount, effectiveSource, remark || item.remark || (effectiveSource === 'PRICE_MASTER' ? '마스터 단가 적용' : '수기 단가 적용'), includeFlag, masterId || null, masterCode || null, s.id);
         updatedIds.push(s.id);
       }
     }
 
-    // 방안 A: 수기 단가 풀(manual_price_pool)에 자동 누적 등록
-    if (newPrice > 0) {
+    // 수기 단가 풀(manual_price_pool)에 자동 누적 등록 (MANUAL_PRICE 인 경우)
+    if (effectiveSource === 'MANUAL_PRICE' && newPrice > 0) {
       try {
         const poolId = `mpp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         db.prepare(`
@@ -116,6 +123,8 @@ export async function PATCH(
       taxAmount, 
       totalAmount, 
       isIncluded: includeFlag,
+      priceSource: effectiveSource,
+      wasUnlocked,
       updatedIds 
     });
   } catch (error: any) {

@@ -18,10 +18,11 @@
     "next": "15.2.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@egdesk/next-api-plugin": "^1.5.40",
+    "@egdesk/next-api-plugin": "^1.5.44",
     "@tailwindcss/postcss": "^4.0.9",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.12",
