@@ -1062,10 +1062,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const qc = data?.case;
   const rawFiles = data?.files || [];
   const files = rawFiles.filter((f: any) => f.file_role !== 'VECTOR_SVG' && f.file_type !== 'SVG' && !f.original_file_name.endsWith('.svg'));
-  const hasFiles = files.length > 0;
+  const hasFiles = files.length > 0 || (data?.drawings && data.drawings.length > 0);
   const latestParseRun = hasFiles ? data?.latestParseRun : null;
   const analyzedFileId = latestParseRun?.source_file_id || (files.length > 0 ? files[0]?.id : null);
-  const drawings = hasFiles ? (data?.drawings || []) : [];
+  const drawings = data?.drawings || [];
 
   // Check if a file is analyzed directly or via its derived DXF
   const isFileAnalyzed = (file: any) => {
