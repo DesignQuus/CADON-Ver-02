@@ -1508,30 +1508,6 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   );
                 })}
               </div>
-
-              {/* Single Action Button (PROMPT 18-R1) */}
-              {files.length > 0 && (() => {
-                const targetFile = files.find((f: any) => f.id === (selectedFileId || analyzedFileId)) || files[0];
-                return (
-                  <button
-                    onClick={() => handleStartAnalysis(targetFile?.id)}
-                    disabled={analyzing}
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {analyzing ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>[{targetFile?.original_file_name || '도면'}] 분석 진행 중 (약 6초)...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 fill-white" />
-                        <span>[{targetFile?.original_file_name || '도면'}] 분석 시작 (CAD 자동 분석 실행)</span>
-                      </>
-                    )}
-                  </button>
-                );
-              })()}
             </div>
           ) : (
             <button
