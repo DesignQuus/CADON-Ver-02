@@ -6,7 +6,8 @@ import {
   FileText, Upload, Play, CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft,
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Sparkles, Building2,
   Folder, Calendar, Check, X, ShieldAlert, ArrowDown, Eye, Download, Info, Trash2,
-  Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin
+  Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin,
+  Table, LayoutGrid, Filter
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
@@ -149,6 +150,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [quoteDropdownOpen]);
+
+  // 💎 Approval Workbench Tab Filter & View States
+  const [approvalFilterTab, setApprovalFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED'>('ALL');
+  const [approvalSearchText, setApprovalSearchText] = useState('');
+  const [approvalViewMode, setApprovalViewMode] = useState<'TABLE' | 'CARD'>('TABLE');
 
   const handleNavigateToCadDrawing = (target: any) => {
     if (!target) return;
@@ -989,6 +995,27 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const finalBomItems = data?.finalBomItems || [];
   const latestQuote = data?.latestQuote;
   const quoteItems = data?.quoteItems || [];
+
+  // 💎 Filtered and Counted Normalized Items for Tab 2 (Calculated inline without hook to avoid early-return violation)
+  const approvedItemIds = new Set(finalBomItems.map((f: any) => f.normalized_item_id));
+  const pendingItemsCount = normalizedItems.filter((ni: any) => !approvedItemIds.has(ni.id)).length;
+  const approvedItemsCount = normalizedItems.filter((ni: any) => approvedItemIds.has(ni.id)).length;
+
+  const filteredNormalizedItems = normalizedItems.filter((ni: any) => {
+    const isApproved = approvedItemIds.has(ni.id);
+    if (approvalFilterTab === 'PENDING' && isApproved) return false;
+    if (approvalFilterTab === 'APPROVED' && !isApproved) return false;
+    if (approvalSearchText.trim()) {
+      const query = approvalSearchText.trim().toLowerCase();
+      const dwgNo = (ni.drawing_no || '').toLowerCase();
+      const name = (ni.drawing_name || ni.normalized_name || '').toLowerCase();
+      const rawName = (ni.raw_name || '').toLowerCase();
+      const mat = (ni.drawing_material || ni.material_candidate || '').toLowerCase();
+      const proj = (ni.project_name || '').toLowerCase();
+      return dwgNo.includes(query) || name.includes(query) || rawName.includes(query) || mat.includes(query) || proj.includes(query);
+    }
+    return true;
+  });
 
   // 💎 Live Real-Time Statistics for Quote Items (Calculated inline without hook to avoid early-return violation)
   let totalAllQty = 0;
@@ -2088,121 +2115,427 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Normalized Items List */}
-            <div className="lg:col-span-5 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
+            {/* Left Column: Normalized Items List (1-Row Excel Sheet Mode / Card Mode) */}
+            <div className="lg:col-span-7 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 flex flex-col">
+              {/* Header Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
                 <div>
-                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    정규화된 BOM 품목 ({normalizedItems.length})
-                  </h4>
+                  <div className="flex items-center space-x-2">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                      <span>정규화 도면 BOM 목록</span>
+                    </h4>
+                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                      {filteredNormalizedItems.length} / {normalizedItems.length}건
+                    </span>
+                  </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    도면 표제란 메타데이터 연동 및 CAD 도면 위치 줌인 지원
+                    1행 고밀도 시트 뷰 • 가로 스크롤로 표제란 스펙 확인
                   </p>
                 </div>
-                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 shrink-0">
-                  표제란 연동됨
-                </span>
+
+                {/* View Mode Switcher (Sheet vs Card) */}
+                <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setApprovalViewMode('TABLE')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold flex items-center space-x-1 transition-all cursor-pointer ${
+                      approvalViewMode === 'TABLE'
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="1행 고밀도 엑셀 시트 모드"
+                  >
+                    <Table className="w-3.5 h-3.5" />
+                    <span>시트형</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setApprovalViewMode('CARD')}
+                    className={`px-2.5 py-1 rounded text-xs font-bold flex items-center space-x-1 transition-all cursor-pointer ${
+                      approvalViewMode === 'CARD'
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="상세 카드 모드"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>카드형</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
-                {normalizedItems.map((ni: any) => {
-                  const finalItem = finalBomItems.find((f: any) => f.normalized_item_id === ni.id);
-                  const isSelected = selectedNormItem?.id === ni.id;
+              {/* Filter Tabs and Search Toolbar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                {/* Segmented Status Tabs */}
+                <div className="flex items-center space-x-1 bg-slate-100/80 p-0.5 rounded-xl border border-slate-200 text-xs shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setApprovalFilterTab('ALL')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                      approvalFilterTab === 'ALL'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    전체 <span className="text-[10px] opacity-75">({normalizedItems.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setApprovalFilterTab('PENDING')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      approvalFilterTab === 'PENDING'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-amber-700 hover:bg-amber-100/60'
+                    }`}
+                  >
+                    <span>검토필요</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      approvalFilterTab === 'PENDING' ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {pendingItemsCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setApprovalFilterTab('APPROVED')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      approvalFilterTab === 'APPROVED'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-700 hover:bg-emerald-100/60'
+                    }`}
+                  >
+                    <span>승인완료</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      approvalFilterTab === 'APPROVED' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {approvedItemsCount}
+                    </span>
+                  </button>
+                </div>
 
-                  return (
-                    <div
-                      key={ni.id}
-                      onClick={() => setSelectedNormItem(ni)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer text-xs space-y-2 relative group ${
-                        isSelected
-                          ? 'border-blue-600 bg-blue-50/40 shadow-sm ring-2 ring-blue-400/30'
-                          : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/60 bg-white'
-                      }`}
+                {/* Search Box */}
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="도면번호, 품명, 재질 검색..."
+                    value={approvalSearchText}
+                    onChange={(e) => setApprovalSearchText(e.target.value)}
+                    className="w-full pl-8 pr-7 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-all"
+                  />
+                  {approvalSearchText && (
+                    <button
+                      onClick={() => setApprovalSearchText('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
-                      {/* Top Header: Drawing No Badge + Item Name + Status Badge */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center space-x-1.5 flex-wrap">
-                            <span className="font-mono font-extrabold text-[11px] text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded border border-blue-200 shrink-0">
-                              {ni.drawing_no || '도면번호 미지정'}
-                            </span>
-                            <h4 className="font-extrabold text-slate-900 text-xs truncate">
-                              {ni.drawing_name || ni.normalized_name}
-                            </h4>
-                          </div>
-                        </div>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-                        <span
-                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] shrink-0 ${
-                            finalItem
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {finalItem ? '승인완료' : '검토필요'}
-                        </span>
-                      </div>
+              {/* View Mode 1: High-Density 1-Row Excel Sheet View */}
+              {approvalViewMode === 'TABLE' ? (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white flex flex-col">
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table className="w-full text-left border-collapse min-w-[960px] text-xs">
+                      <thead className="sticky top-0 z-20 bg-slate-100/95 backdrop-blur shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-slate-700 text-[11px] font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="w-10 min-w-[40px] max-w-[40px] px-2 py-2 text-center sticky left-0 z-30 bg-slate-100 border-r border-slate-200">
+                            No.
+                          </th>
+                          <th className="min-w-[135px] max-w-[160px] px-2.5 py-2 sticky left-[40px] z-30 bg-slate-100 border-r border-slate-200">
+                            도면번호 (DWG NO.)
+                          </th>
+                          <th className="min-w-[150px] px-2.5 py-2">
+                            도면 품명 / 정규화명
+                          </th>
+                          <th className="w-20 min-w-[75px] px-2 py-2 text-center">
+                            검수 상태
+                          </th>
+                          <th className="w-16 min-w-[65px] px-2 py-2 text-right">
+                            수량
+                          </th>
+                          <th className="w-20 min-w-[80px] px-2 py-2">
+                            재질
+                          </th>
+                          <th className="w-14 min-w-[55px] px-1.5 py-2 text-center">
+                            척도
+                          </th>
+                          <th className="w-12 min-w-[50px] px-1.5 py-2 text-center">
+                            Rev
+                          </th>
+                          <th className="min-w-[130px] px-2.5 py-2">
+                            프로젝트명
+                          </th>
+                          <th className="min-w-[150px] px-2.5 py-2">
+                            승인 매칭 마스터
+                          </th>
+                          <th className="w-24 min-w-[96px] px-2 py-2 text-center sticky right-0 z-30 bg-slate-100 border-l border-slate-200">
+                            도면 위치
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredNormalizedItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={11} className="py-14 text-center text-slate-400">
+                              <p className="font-semibold text-xs">일치하는 품목이 없습니다.</p>
+                              {approvalSearchText && (
+                                <button
+                                  type="button"
+                                  onClick={() => setApprovalSearchText('')}
+                                  className="mt-2 text-[11px] text-blue-600 hover:underline font-bold cursor-pointer"
+                                >
+                                  검색어 초기화
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredNormalizedItems.map((ni: any, index: number) => {
+                            const finalItem = finalBomItems.find((f: any) => f.normalized_item_id === ni.id);
+                            const isSelected = selectedNormItem?.id === ni.id;
 
-                      {/* Project Name from Drawing Title Block */}
-                      <div className="flex items-center space-x-1 text-[11px] text-slate-600 truncate bg-slate-50 px-2 py-1 rounded border border-slate-100">
-                        <Folder className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span className="text-slate-400 font-medium shrink-0">프로젝트:</span>
-                        <span className="font-semibold text-slate-700 truncate">
-                          {ni.project_name || data?.case?.project_name || '기본 프로젝트'}
-                        </span>
-                      </div>
+                            return (
+                              <tr
+                                key={ni.id}
+                                onClick={() => setSelectedNormItem(ni)}
+                                className={`group h-9 transition-colors cursor-pointer text-xs ${
+                                  isSelected
+                                    ? 'bg-blue-100/75 text-blue-950 font-medium ring-1 ring-inset ring-blue-300'
+                                    : 'bg-white hover:bg-slate-50/80 text-slate-700'
+                                }`}
+                              >
+                                {/* No. (Frozen Column 1) */}
+                                <td
+                                  className={`px-2 py-1 text-center font-mono text-[11px] sticky left-0 z-10 border-r border-slate-200/80 ${
+                                    isSelected ? 'bg-blue-100 text-blue-900 font-bold' : 'bg-white group-hover:bg-slate-50 text-slate-500'
+                                  }`}
+                                >
+                                  {index + 1}
+                                </td>
 
-                      {/* Title Block Specs Grid (Rev, Material, Scale, Qty) */}
-                      <div className="grid grid-cols-4 gap-1 text-[10.5px] bg-slate-50/60 p-1.5 rounded border border-slate-100 text-slate-600">
-                        <div className="truncate">
-                          <span className="text-slate-400">Rev:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_revision || 'R00'}</strong>
-                        </div>
-                        <div className="truncate">
-                          <span className="text-slate-400">재질:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_material || ni.material_candidate || 'SS400'}</strong>
-                        </div>
-                        <div className="truncate">
-                          <span className="text-slate-400">척도:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_scale || '-'}</strong>
-                        </div>
-                        <div className="text-right truncate">
-                          <span className="text-slate-400">수량:</span> <strong className="text-blue-700 font-extrabold">{ni.quantity} {ni.unit || 'EA'}</strong>
-                        </div>
-                      </div>
+                                {/* DWG NO. (Frozen Column 2) */}
+                                <td
+                                  className={`px-2.5 py-1 font-mono font-bold text-[11px] sticky left-[40px] z-10 border-r border-slate-200/80 truncate max-w-[160px] ${
+                                    isSelected ? 'bg-blue-100 text-blue-900' : 'bg-white group-hover:bg-slate-50 text-blue-700'
+                                  }`}
+                                  title={ni.drawing_no || '도면번호 미지정'}
+                                >
+                                  {ni.drawing_no || '도면번호 미지정'}
+                                </td>
 
-                      {/* Bottom: Raw Text and Action Button to Navigate to CAD Drawing Location */}
-                      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <div className="text-slate-400 text-[10.5px] truncate">
-                          Raw: <span className="font-mono text-slate-600">{ni.raw_name}</span>
-                        </div>
+                                {/* Drawing / Normalized Name */}
+                                <td className="px-2.5 py-1 truncate max-w-[180px]" title={ni.drawing_name || ni.normalized_name}>
+                                  <span className={`font-semibold ${isSelected ? 'text-blue-950' : 'text-slate-900'}`}>
+                                    {ni.drawing_name || ni.normalized_name}
+                                  </span>
+                                </td>
 
+                                {/* Status Badge */}
+                                <td className="px-2 py-1 text-center whitespace-nowrap">
+                                  <span
+                                    className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                                      finalItem
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                        : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    }`}
+                                  >
+                                    {finalItem ? '승인완료' : '검토필요'}
+                                  </span>
+                                </td>
+
+                                {/* Quantity */}
+                                <td className="px-2 py-1 text-right font-extrabold whitespace-nowrap">
+                                  <span className={isSelected ? 'text-blue-900' : 'text-slate-900'}>
+                                    {ni.quantity}
+                                  </span>{' '}
+                                  <span className="text-[10px] text-slate-500 font-normal">{ni.unit || 'EA'}</span>
+                                </td>
+
+                                {/* Material */}
+                                <td className="px-2 py-1 truncate max-w-[100px] text-slate-600 text-[11px]" title={ni.drawing_material || ni.material_candidate}>
+                                  {ni.drawing_material || ni.material_candidate || 'SS400'}
+                                </td>
+
+                                {/* Scale */}
+                                <td className="px-1.5 py-1 text-center text-slate-500 text-[11px] font-mono">
+                                  {ni.drawing_scale || '-'}
+                                </td>
+
+                                {/* Revision */}
+                                <td className="px-1.5 py-1 text-center font-mono text-[11px] font-bold text-slate-600">
+                                  {ni.drawing_revision || 'R00'}
+                                </td>
+
+                                {/* Project Name */}
+                                <td className="px-2.5 py-1 truncate max-w-[150px] text-slate-600 text-[11px]" title={ni.project_name || data?.case?.project_name}>
+                                  {ni.project_name || data?.case?.project_name || '-'}
+                                </td>
+
+                                {/* Approved Master Matching */}
+                                <td className="px-2.5 py-1 truncate max-w-[160px] text-[11px]">
+                                  {finalItem ? (
+                                    <span className="text-emerald-700 font-semibold flex items-center space-x-1" title={`[${finalItem.final_master_code}] ${finalItem.final_name}`}>
+                                      <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                                      <span className="truncate">[{finalItem.final_master_code}] {finalItem.final_name}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic">미매칭 (검토 대기)</span>
+                                  )}
+                                </td>
+
+                                {/* CAD Drawing Zoom In Action (Frozen Right Column) */}
+                                <td
+                                  className={`px-2 py-1 text-center sticky right-0 z-10 border-l border-slate-200/80 whitespace-nowrap ${
+                                    isSelected ? 'bg-blue-100' : 'bg-white group-hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedNormItem(ni);
+                                      handleNavigateToCadDrawing(ni);
+                                    }}
+                                    className="btn-hover-effect px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10.5px] font-bold inline-flex items-center space-x-1 transition-all cursor-pointer shadow-xs"
+                                    title="1. 도면등록 & 뷰어 탭으로 이동하여 해당 도면/BOM 위치를 줌인합니다."
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span>줌인 ↗</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="bg-slate-50 px-3 py-2 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-1 text-[10.5px] text-slate-500">
+                    <span>💡 행 클릭 시 우측 상세 검토 패널이 열리며, 가로 스크롤로 표제란 전체 스펙을 확인할 수 있습니다.</span>
+                    <span className="font-mono font-medium">총 {filteredNormalizedItems.length}개 표시 중</span>
+                  </div>
+                </div>
+              ) : (
+                /* View Mode 2: Card View Fallback */
+                <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
+                  {filteredNormalizedItems.length === 0 ? (
+                    <div className="py-14 text-center text-slate-400">
+                      <p className="font-semibold text-xs">일치하는 품목이 없습니다.</p>
+                      {approvalSearchText && (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedNormItem(ni);
-                            handleNavigateToCadDrawing(ni);
-                          }}
-                          className="btn-hover-effect px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-xs shrink-0"
-                          title="클릭 시 1. 도면등록 & 뷰어 탭으로 이동하여 해당 도면/BOM 위치로 화면을 맞춥니다."
+                          onClick={() => setApprovalSearchText('')}
+                          className="mt-2 text-[11px] text-blue-600 hover:underline font-bold cursor-pointer"
                         >
-                          <ExternalLink className="w-3 h-3" />
-                          <span>도면 위치 줌인 ↗</span>
+                          검색어 초기화
                         </button>
-                      </div>
-
-                      {finalItem && (
-                        <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-emerald-100 flex items-center space-x-1">
-                          <Check className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">승인 마스터: [{finalItem.final_master_code}] {finalItem.final_name}</span>
-                        </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
+                  ) : (
+                    filteredNormalizedItems.map((ni: any) => {
+                      const finalItem = finalBomItems.find((f: any) => f.normalized_item_id === ni.id);
+                      const isSelected = selectedNormItem?.id === ni.id;
+
+                      return (
+                        <div
+                          key={ni.id}
+                          onClick={() => setSelectedNormItem(ni)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer text-xs space-y-2 relative group ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50/40 shadow-sm ring-2 ring-blue-400/30'
+                              : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/60 bg-white'
+                          }`}
+                        >
+                          {/* Top Header: Drawing No Badge + Item Name + Status Badge */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex items-center space-x-1.5 flex-wrap">
+                                <span className="font-mono font-extrabold text-[11px] text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                                  {ni.drawing_no || '도면번호 미지정'}
+                                </span>
+                                <h4 className="font-extrabold text-slate-900 text-xs truncate">
+                                  {ni.drawing_name || ni.normalized_name}
+                                </h4>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-bold text-[10px] shrink-0 ${
+                                finalItem
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              {finalItem ? '승인완료' : '검토필요'}
+                            </span>
+                          </div>
+
+                          {/* Project Name from Drawing Title Block */}
+                          <div className="flex items-center space-x-1 text-[11px] text-slate-600 truncate bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                            <Folder className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="text-slate-400 font-medium shrink-0">프로젝트:</span>
+                            <span className="font-semibold text-slate-700 truncate">
+                              {ni.project_name || data?.case?.project_name || '기본 프로젝트'}
+                            </span>
+                          </div>
+
+                          {/* Title Block Specs Grid (Rev, Material, Scale, Qty) */}
+                          <div className="grid grid-cols-4 gap-1 text-[10.5px] bg-slate-50/60 p-1.5 rounded border border-slate-100 text-slate-600">
+                            <div className="truncate">
+                              <span className="text-slate-400">Rev:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_revision || 'R00'}</strong>
+                            </div>
+                            <div className="truncate">
+                              <span className="text-slate-400">재질:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_material || ni.material_candidate || 'SS400'}</strong>
+                            </div>
+                            <div className="truncate">
+                              <span className="text-slate-400">척도:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_scale || '-'}</strong>
+                            </div>
+                            <div className="text-right truncate">
+                              <span className="text-slate-400">수량:</span> <strong className="text-blue-700 font-extrabold">{ni.quantity} {ni.unit || 'EA'}</strong>
+                            </div>
+                          </div>
+
+                          {/* Bottom: Raw Text and Action Button to Navigate to CAD Drawing Location */}
+                          <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                            <div className="text-slate-400 text-[10.5px] truncate">
+                              Raw: <span className="font-mono text-slate-600">{ni.raw_name}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedNormItem(ni);
+                                handleNavigateToCadDrawing(ni);
+                              }}
+                              className="btn-hover-effect px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-xs shrink-0"
+                              title="클릭 시 1. 도면등록 & 뷰어 탭으로 이동하여 해당 도면/BOM 위치로 화면을 맞춥니다."
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>도면 위치 줌인 ↗</span>
+                            </button>
+                          </div>
+
+                          {finalItem && (
+                            <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-emerald-100 flex items-center space-x-1">
+                              <Check className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">승인 마스터: [{finalItem.final_master_code}] {finalItem.final_name}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right Column: Selected Item & Top 3 Recommendations */}
-            <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+            <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-5">
               {selectedNormItem ? (
                 <>
                   <div className="border-b border-slate-100 pb-4">
