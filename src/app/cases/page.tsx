@@ -79,8 +79,8 @@ export default function CasesPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [caseName, setCaseName] = useState('');
-  const [companyId, setCompanyId] = useState('comp_001');
-  const [projectId, setProjectId] = useState('proj_001');
+  const [companyId, setCompanyId] = useState('comp_sechang');
+  const [projectId, setProjectId] = useState('proj_sechang');
   const [submitting, setSubmitting] = useState(false);
 
   // Filter & Search States
@@ -154,8 +154,8 @@ export default function CasesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          companyId: 'comp_001',
-          projectId: 'proj_001',
+          companyId: 'comp_sechang',
+          projectId: 'proj_sechang',
           caseName: autoCaseName
         })
       });
@@ -1184,8 +1184,11 @@ export default function CasesPage() {
                   onChange={(e) => setCompanyId(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-[3px] text-xs font-semibold text-slate-800 outline-none focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 >
+                  <option value="comp_sechang">(주)세창인터내셔널 [CUST-SECHANG]</option>
                   <option value="comp_001">A기계공업 (주) [CUST-0001]</option>
                   <option value="comp_002">B자동화시스템 (주) [CUST-0002]</option>
+                  <option value="comp_003">(주)한화에어로스페이스 파트너스 [CUST-0003]</option>
+                  <option value="comp_004">현대모비스 구동모듈 협력단 [CUST-0004]</option>
                 </select>
               </div>
 
@@ -1196,7 +1199,12 @@ export default function CasesPage() {
                   onChange={(e) => setProjectId(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-[3px] text-xs font-semibold text-slate-800 outline-none focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 >
+                  <option value="proj_sechang">인버터 조립 LINE 신규라인 (보그워너)</option>
                   <option value="proj_001">2026 고속 가이드레일 및 프레임 증설라인</option>
+                  <option value="proj_002">스마트 컨베이어 이송 자동화 시스템</option>
+                  <option value="proj_003">2차전지 모듈 조립 라인 지그/프레임 제작</option>
+                  <option value="proj_004">항공 정밀 가공 지그 및 툴링 파트</option>
+                  <option value="proj_005">구동모터 브라켓 및 샤프트 시제품 제작</option>
                 </select>
               </div>
 
