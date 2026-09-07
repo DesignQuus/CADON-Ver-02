@@ -574,7 +574,7 @@ export function initializeDatabase() {
     `).run(u.id, u.login_id, defaultPassHash, u.name, u.role, now, now);
 
     // Grant company access to all customer companies
-    for (const compId of ['comp_001', 'comp_002', 'comp_003', 'comp_004']) {
+    for (const compId of ['comp_sechang', 'comp_001', 'comp_002', 'comp_003', 'comp_004']) {
       db.prepare(`
         INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
         VALUES (?, ?, 'MANAGER', 1)
@@ -593,7 +593,7 @@ export function initializeDatabase() {
       is_active = 1
   `).run('usr_admin', 'admin', adminPassHash, '시스템 최고관리자', 'SUPER_ADMIN', now, now);
 
-  for (const compId of ['comp_001', 'comp_002', 'comp_003', 'comp_004']) {
+  for (const compId of ['comp_sechang', 'comp_001', 'comp_002', 'comp_003', 'comp_004']) {
     db.prepare(`
       INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
       VALUES ('usr_admin', ?, 'MANAGER', 1)
@@ -605,6 +605,11 @@ export function initializeDatabase() {
   if (companyCount.cnt === 0) {
 
     // Seed Companies
+    db.prepare(`
+      INSERT INTO companies (id, company_code, company_name, company_type, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run('comp_sechang', 'CUST-SECHANG', '(주)세창인터내셔널', 'CUSTOMER', 1, now, now);
+
     db.prepare(`
       INSERT INTO companies (id, company_code, company_name, company_type, is_active, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
