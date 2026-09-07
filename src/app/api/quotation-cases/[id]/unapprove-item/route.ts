@@ -33,7 +33,13 @@ export async function POST(
     `).get(id, normalizedItemId) as any;
 
     if (!existingFinal) {
-      return NextResponse.json({ error: '해당 품목의 승인 내역이 존재하지 않습니다.' }, { status: 404 });
+      // 이미 승인 취소(검토 대기) 상태인 경우 멱등성(Idempotency)을 보장하여 정상 성공 반환
+      return NextResponse.json({
+        success: true,
+        message: '해당 품목은 이미 검토 대기 상태입니다.',
+        readiness: qc.quote_readiness || 'REVIEW_REQUIRED',
+        unapprovedItemId: normalizedItemId
+      });
     }
 
     // 2. Delete from final_bom_items

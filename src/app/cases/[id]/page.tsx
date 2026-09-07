@@ -409,6 +409,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   // 4-2. Unapprove Item (단일 품목 승인 취소)
   const handleUnapproveItem = async (normalizedItemId: string, itemName?: string) => {
+    if (actionLoading) return;
     setActionLoading(true);
     try {
       const res = await fetch(`/api/quotation-cases/${id}/unapprove-item`, {
@@ -416,13 +417,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ normalizedItemId })
       });
-      if (res.ok) {
-        setSelectedApprovalIds((prev) => prev.filter((itId) => itId !== normalizedItemId));
-        await fetchData();
-      } else {
+      setSelectedApprovalIds((prev) => prev.filter((itId) => itId !== normalizedItemId));
+      await fetchData();
+      if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || '승인 취소 처리 실패');
       }
+    } catch (e: any) {
+      console.error(e);
+      await fetchData();
     } finally {
       setActionLoading(false);
     }
@@ -2460,7 +2463,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           <th className="min-w-[150px] px-2.5 py-2">
                             도면 품명 / 정규화명
                           </th>
-                          <th className="w-24 min-w-[90px] px-2 py-2 text-center">
+                          <th className="w-28 min-w-[105px] px-2 py-2 text-center">
                             검수 상태
                           </th>
                           <th className="w-16 min-w-[65px] px-2 py-2 text-right">
@@ -2565,23 +2568,27 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   </span>
                                 </td>
 
-                                {/* Status Badge & Hover Unapprove Action */}
+                                {/* Status Badge & Unapprove Action (Jitter-free) */}
                                 <td className="px-2 py-1 text-center whitespace-nowrap">
                                   {finalItem ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleUnapproveItem(ni.id, ni.drawing_name || ni.normalized_name);
-                                      }}
-                                      className="group/btn inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 hover:bg-rose-100 text-emerald-800 hover:text-rose-700 border border-emerald-200 hover:border-rose-300 transition-all cursor-pointer shadow-2xs"
-                                      title="승인완료 상태입니다. 클릭 시 승인을 취소하고 '검토필요' 상태로 되돌립니다."
-                                    >
-                                      <Check className="w-2.5 h-2.5 text-emerald-600 group-hover/btn:hidden shrink-0" />
-                                      <RotateCcw className="w-2.5 h-2.5 text-rose-600 hidden group-hover/btn:inline shrink-0" />
-                                      <span className="group-hover/btn:hidden">승인완료</span>
-                                      <span className="hidden group-hover/btn:inline font-bold">승인 취소 ↺</span>
-                                    </button>
+                                    <div className="inline-flex items-center justify-center space-x-1">
+                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                        <span>승인완료</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleUnapproveItem(ni.id, ni.drawing_name || ni.normalized_name);
+                                        }}
+                                        disabled={actionLoading}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded border border-transparent hover:border-rose-200 transition-colors cursor-pointer disabled:opacity-50"
+                                        title="승인 취소 (검토 대기 상태로 복귀)"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-rose-500" />
+                                      </button>
+                                    </div>
                                   ) : (
                                     <span className="inline-block px-2 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
                                       검토필요
@@ -2706,20 +2713,24 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                             </div>
 
                             {finalItem ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUnapproveItem(ni.id, ni.drawing_name || ni.normalized_name);
-                                }}
-                                className="group/btn px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 hover:bg-rose-100 text-emerald-800 hover:text-rose-700 border border-emerald-200 hover:border-rose-300 transition-all cursor-pointer shadow-2xs shrink-0 flex items-center space-x-1"
-                                title="승인완료 상태입니다. 클릭 시 승인을 취소하고 '검토필요' 상태로 되돌립니다."
-                              >
-                                <Check className="w-2.5 h-2.5 text-emerald-600 group-hover/btn:hidden shrink-0" />
-                                <RotateCcw className="w-2.5 h-2.5 text-rose-600 hidden group-hover/btn:inline shrink-0" />
-                                <span className="group-hover/btn:hidden">승인완료</span>
-                                <span className="hidden group-hover/btn:inline font-bold">승인 취소 ↺</span>
-                              </button>
+                              <div className="flex items-center space-x-1 shrink-0">
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                  <span>승인완료</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUnapproveItem(ni.id, ni.drawing_name || ni.normalized_name);
+                                  }}
+                                  disabled={actionLoading}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded border border-transparent hover:border-rose-200 transition-colors cursor-pointer disabled:opacity-50"
+                                  title="승인 취소 (검토 대기 상태로 복귀)"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-rose-500" />
+                                </button>
+                              </div>
                             ) : (
                               <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
                                 검토필요
