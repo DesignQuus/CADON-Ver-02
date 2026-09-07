@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import CaseWorkflowSidebar, { WorkflowTab } from '@/components/cases/CaseWorkflowSidebar';
 import { useRouter } from 'next/navigation';
@@ -37,11 +37,84 @@ import {
   CheckSquare,
   Square,
   Minus,
-  X
+  X,
+  User,
+  Users
 } from 'lucide-react';
 
 type SortField = 'date' | 'amount' | 'drawings' | 'bom' | 'case_no' | 'case_name';
 type SortDirection = 'asc' | 'desc';
+
+interface ManagerTheme {
+  bg: string;
+  text: string;
+  border: string;
+  badge: string;
+  dept: string;
+  initial: string;
+}
+
+const MANAGER_THEMES: Record<string, ManagerTheme> = {
+  usr_kim: {
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    border: 'border-blue-200',
+    badge: 'bg-blue-600 text-white',
+    dept: '영업1팀',
+    initial: '김'
+  },
+  usr_lee: {
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    border: 'border-emerald-200',
+    badge: 'bg-emerald-600 text-white',
+    dept: '영업1팀',
+    initial: '이'
+  },
+  usr_choi: {
+    bg: 'bg-purple-50',
+    text: 'text-purple-700',
+    border: 'border-purple-200',
+    badge: 'bg-purple-600 text-white',
+    dept: '기술2팀',
+    initial: '최'
+  },
+  usr_song: {
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-200',
+    badge: 'bg-rose-600 text-white',
+    dept: '기술2팀',
+    initial: '송'
+  },
+  usr_park: {
+    bg: 'bg-amber-50',
+    text: 'text-amber-800',
+    border: 'border-amber-200',
+    badge: 'bg-amber-600 text-white',
+    dept: '정밀3팀',
+    initial: '박'
+  },
+  usr_admin: {
+    bg: 'bg-slate-100',
+    text: 'text-slate-800',
+    border: 'border-slate-300',
+    badge: 'bg-slate-700 text-white',
+    dept: '운영총괄',
+    initial: '관'
+  }
+};
+
+function getManagerTheme(userId: string): ManagerTheme {
+  return MANAGER_THEMES[userId] || {
+    bg: 'bg-slate-50',
+    text: 'text-slate-700',
+    border: 'border-slate-200',
+    badge: 'bg-slate-500 text-white',
+    dept: '견적팀',
+    initial: '👤'
+  };
+}
 
 // Korean Chosung Search Helper
 const CHOSUNG_LIST = [
@@ -133,7 +206,7 @@ export default function CasesPage() {
   // Reset pagination when search, tab, or pageSize changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedTab, searchQuery, pageSize]);
+  }, [selectedTab, searchQuery, pageSize, filterManager, filterCompany]);
 
   // Quick DWG Upload & Auto Case Creation Handler
   const handleQuickUploadFile = async (file: File) => {
@@ -234,6 +307,16 @@ export default function CasesPage() {
   ).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   const uniqueCompanies = Array.from(new Set(cases.map(c => c.company_name).filter(Boolean)));
   
+  const managerCaseCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    cases.forEach(c => {
+      if (c.created_by_user_id) {
+        counts[c.created_by_user_id] = (counts[c.created_by_user_id] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [cases]);
+  
   const secureVaultCount = cases.filter(c => c.visibility === 'PRIVATE').length;
   
   const totalCasesCount = cases.length;
@@ -263,7 +346,8 @@ export default function CasesPage() {
       const matchNo = matchHangulSearch(c.case_no || '', q);
       const matchComp = matchHangulSearch(c.company_name || '', q);
       const matchProj = matchHangulSearch(c.project_name || '', q);
-      return matchName || matchNo || matchComp || matchProj;
+      const matchManager = matchHangulSearch(c.created_by_name || '', q);
+      return matchName || matchNo || matchComp || matchProj || matchManager;
     }
     return true;
   });
@@ -696,6 +780,78 @@ export default function CasesPage() {
           </div>
         </div>
 
+        {/* Manager Quick Filter Bar (5인 견적 담당자 1-클릭 퀵 필터 칩 바) */}
+        <div className="flex items-center gap-2 overflow-x-auto py-1 px-0.5 scrollbar-none">
+          <div className="flex items-center space-x-1 text-xs font-bold text-slate-500 shrink-0 mr-1">
+            <Users className="w-3.5 h-3.5 text-slate-600" />
+            <span className="text-[12.5px] font-extrabold text-slate-700">견적 담당자별:</span>
+          </div>
+
+          {/* 전체 담당자 칩 */}
+          <button
+            type="button"
+            onClick={() => setFilterManager('ALL')}
+            className={`btn-hover-effect-tab inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-[4px] text-xs font-bold transition-all cursor-pointer shrink-0 border ${
+              filterManager === 'ALL'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-slate-900/20'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300'
+            }`}
+          >
+            <span>전체 담당자</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                filterManager === 'ALL'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {cases.length}
+            </span>
+          </button>
+
+          {/* 5인 견적 담당자 개별 칩 */}
+          {uniqueManagers.map((m) => {
+            const theme = getManagerTheme(m.id);
+            const isSelected = filterManager === m.id;
+            const count = managerCaseCounts[m.id] || 0;
+
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setFilterManager(isSelected ? 'ALL' : m.id)}
+                title={`${m.name} (${theme.dept}) 건만 보기`}
+                className={`btn-hover-effect-tab inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-[4px] text-xs font-bold transition-all cursor-pointer shrink-0 border ${
+                  isSelected
+                    ? `${theme.bg} ${theme.text} ${theme.border} ring-2 ring-blue-500 ring-offset-1 shadow-xs font-black`
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                }`}
+              >
+                <span
+                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                    isSelected ? theme.badge : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {theme.initial}
+                </span>
+                <span>{m.name}</span>
+                <span className="text-[10px] font-medium opacity-70">
+                  {theme.dept}
+                </span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                    isSelected
+                      ? 'bg-white/90 text-slate-900 shadow-2xs'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Sub-bar: Filtering Summary & Bulk Selection Status */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-700 font-medium bg-slate-50 px-4 py-2.5 rounded-[3px] border border-slate-200/80 gap-2">
           <div className="flex items-center flex-wrap gap-2">
@@ -788,6 +944,9 @@ export default function CasesPage() {
                     <th className="py-3 px-3.5 w-52 whitespace-nowrap">
                       <span>고객사 / 프로젝트</span>
                     </th>
+                    <th className="py-3 px-3.5 w-40 text-center whitespace-nowrap">
+                      <span>견적 담당자</span>
+                    </th>
                     <th className="py-3 px-3.5 w-32 text-center whitespace-nowrap">
                       <span>진행 상태</span>
                     </th>
@@ -827,7 +986,7 @@ export default function CasesPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-800 text-[13px]">
                   {paginatedCases.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-16 text-center text-slate-500">
+                      <td colSpan={11} className="py-16 text-center text-slate-500">
                         <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <p className="font-bold text-sm text-slate-700">
                           {searchQuery ? `'${searchQuery}' 검색 조건에 맞는 견적 건이 없습니다.` : '해당 필터 조건의 견적 건이 없습니다.'}
@@ -903,13 +1062,33 @@ export default function CasesPage() {
                                 <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                                 <span className="truncate max-w-[170px]">{c.project_name}</span>
                               </div>
-                              {c.created_by_name && (
-                                <div className="text-[11px] text-slate-500 font-medium flex items-center space-x-1 pt-0.5">
-                                  <span className="text-slate-400">담당:</span>
-                                  <span className="text-blue-700 font-semibold">{c.created_by_name}</span>
-                                </div>
-                              )}
                             </div>
+                          </td>
+
+                          {/* Quote Manager Badge (독립 전용 열 & 1-클릭 필터) */}
+                          <td className="py-3 px-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              const theme = getManagerTheme(c.created_by_user_id);
+                              const isFiltered = filterManager === c.created_by_user_id;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setFilterManager(isFiltered ? 'ALL' : c.created_by_user_id)}
+                                  title={`${c.created_by_name || '담당자'} 건만 필터링 (클릭)`}
+                                  className={`btn-hover-effect-tab inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-[4px] border ${theme.bg} ${theme.text} ${theme.border} text-xs font-bold transition-all hover:shadow-xs hover:scale-105 cursor-pointer ${
+                                    isFiltered ? 'ring-2 ring-blue-500 shadow-xs ring-offset-1 font-black' : ''
+                                  }`}
+                                >
+                                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${theme.badge} shrink-0 shadow-2xs`}>
+                                    {theme.initial}
+                                  </span>
+                                  <span className="font-bold">{c.created_by_name || c.created_by_user_id || '미지정'}</span>
+                                  <span className="text-[10px] font-medium opacity-75 border-l border-current/30 pl-1 ml-0.5">
+                                    {theme.dept}
+                                  </span>
+                                </button>
+                              );
+                            })()}
                           </td>
 
                           {/* Status Badge */}
@@ -1048,9 +1227,20 @@ export default function CasesPage() {
                           <span>의뢰일: <strong className="text-slate-800 font-mono">{c.request_date}</strong></span>
                         </div>
                         {c.created_by_name && (
-                          <div className="flex items-center justify-between text-slate-600 font-medium pt-0.5 border-t border-slate-100/80">
-                            <span className="text-slate-400 text-[11px]">견적 담당</span>
-                            <span className="text-blue-700 font-bold text-xs">{c.created_by_name}</span>
+                          <div className="flex items-center justify-between text-slate-600 font-medium pt-1.5 border-t border-slate-100/80">
+                            <span className="text-slate-400 text-[11px] font-bold">견적 담당자</span>
+                            {(() => {
+                              const theme = getManagerTheme(c.created_by_user_id);
+                              return (
+                                <span className={`inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-[3px] border ${theme.bg} ${theme.text} ${theme.border} text-xs font-bold`}>
+                                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black ${theme.badge} shrink-0`}>
+                                    {theme.initial}
+                                  </span>
+                                  <span>{c.created_by_name}</span>
+                                  <span className="text-[10px] opacity-75 font-normal">({theme.dept})</span>
+                                </span>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
