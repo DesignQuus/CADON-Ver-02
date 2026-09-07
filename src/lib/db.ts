@@ -196,6 +196,8 @@ export function initializeDatabase() {
       title_block_bbox_json TEXT,
       confidence_score REAL NOT NULL DEFAULT 1.0,
       status TEXT NOT NULL DEFAULT 'CONFIRMED',
+      is_quote_included INTEGER NOT NULL DEFAULT 1,
+      exclude_reason TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (quotation_case_id) REFERENCES quotation_cases(id) ON DELETE CASCADE
     );
@@ -274,6 +276,8 @@ export function initializeDatabase() {
       quantity REAL NOT NULL DEFAULT 1.0,
       unit TEXT NOT NULL DEFAULT 'EA',
       status TEXT NOT NULL DEFAULT 'NORMALIZED',
+      is_quote_included INTEGER NOT NULL DEFAULT 1,
+      exclude_reason TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (quotation_case_id) REFERENCES quotation_cases(id) ON DELETE CASCADE
     );
@@ -407,6 +411,7 @@ export function initializeDatabase() {
       quote_id TEXT NOT NULL,
       final_bom_item_id TEXT,
       master_id TEXT,
+      drawing_no TEXT,
       item_no INTEGER NOT NULL,
       master_code TEXT,
       item_name TEXT NOT NULL,
@@ -592,6 +597,13 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_drawing_rel_case ON drawing_relationships(quotation_case_id);
     CREATE INDEX IF NOT EXISTS idx_final_bom_case ON final_bom_items(quotation_case_id);
   `);
+
+  // Dynamic Column Migrations for Quote Inclusion
+  try { db.exec('ALTER TABLE drawings ADD COLUMN is_quote_included INTEGER NOT NULL DEFAULT 1;'); } catch {}
+  try { db.exec('ALTER TABLE drawings ADD COLUMN exclude_reason TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE quote_items ADD COLUMN drawing_no TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE normalized_bom_items ADD COLUMN is_quote_included INTEGER NOT NULL DEFAULT 1;'); } catch {}
+  try { db.exec('ALTER TABLE normalized_bom_items ADD COLUMN exclude_reason TEXT;'); } catch {}
 
   // Ensure 5 demo users (김견적, 이견적, 최견적, 송견적, 박견적) and admin are registered
   const now = new Date().toISOString();

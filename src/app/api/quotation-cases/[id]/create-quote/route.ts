@@ -30,9 +30,21 @@ export async function POST(
 
   try {
     const finalItems = db.prepare(`
-      SELECT * FROM final_bom_items
-      WHERE quotation_case_id = ? AND approval_status = 'APPROVED'
-      ORDER BY created_at ASC
+      SELECT 
+        fbi.*,
+        COALESCE(d.drawing_no_raw, fb.part_no, '') as drawing_no,
+        COALESCE(d.is_quote_included, ni.is_quote_included, 1) as is_quote_included
+      FROM final_bom_items fbi
+      LEFT JOIN normalized_bom_items ni ON ni.id = fbi.normalized_item_id
+      LEFT JOIN flattened_bom_items fb ON fb.id = REPLACE(fbi.normalized_item_id, 'norm_', 'fb_')
+      LEFT JOIN (
+        SELECT quotation_case_id, drawing_no_raw, drawing_name_raw, is_quote_included
+        FROM drawings
+        GROUP BY quotation_case_id, drawing_no_raw
+      ) d ON d.quotation_case_id = fbi.quotation_case_id 
+        AND (d.drawing_no_raw = fb.part_no OR d.drawing_name_raw = fbi.final_name)
+      WHERE fbi.quotation_case_id = ? AND fbi.approval_status = 'APPROVED'
+      ORDER BY fbi.created_at ASC
     `).all(id) as any[];
 
     if (finalItems.length === 0) {
@@ -77,13 +89,17 @@ export async function POST(
 
       const qty = item.final_quantity || 1.0;
       const amount = Math.round(qty * unitPrice);
-      subtotal += amount;
+      const isIncluded = item.is_quote_included !== 0 ? 1 : 0;
+      if (isIncluded === 1) {
+        subtotal += amount;
+      }
 
       quoteItemsData.push({
         id: `qitem_${quoteId}_${idx+1}`,
         quote_id: quoteId,
         final_bom_item_id: item.id,
         master_id: item.final_master_id,
+        drawing_no: item.drawing_no || '',
         item_no: idx + 1,
         master_code: item.final_master_code || '-',
         item_name: item.final_name,
@@ -95,7 +111,8 @@ export async function POST(
         amount: amount,
         price_source: priceSource,
         price_status: priceStatus,
-        remark: ''
+        remark: isIncluded ? '' : '견적 제외 품목',
+        is_included: isIncluded
       });
     }
 
@@ -124,18 +141,18 @@ export async function POST(
     // Insert Quote Items
     const insertQItem = db.prepare(`
       INSERT INTO quote_items (
-        id, quote_id, final_bom_item_id, master_id, item_no, master_code,
+        id, quote_id, final_bom_item_id, master_id, drawing_no, item_no, master_code,
         item_name, specification, material, quantity, unit, unit_price,
-        amount, price_source, price_status, remark, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        amount, price_source, price_status, remark, is_included, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const qi of quoteItemsData) {
       insertQItem.run(
-        qi.id, qi.quote_id, qi.final_bom_item_id, qi.master_id, qi.item_no,
+        qi.id, qi.quote_id, qi.final_bom_item_id, qi.master_id, qi.drawing_no, qi.item_no,
         qi.master_code, qi.item_name, qi.specification, qi.material,
         qi.quantity, qi.unit, qi.unit_price, qi.amount, qi.price_source,
-        qi.price_status, qi.remark, now.toISOString()
+        qi.price_status, qi.remark, qi.is_included, now.toISOString()
       );
     }
 

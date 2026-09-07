@@ -152,7 +152,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   }, [quoteDropdownOpen]);
 
   // 💎 Approval Workbench Tab Filter & View States
-  const [approvalFilterTab, setApprovalFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED'>('ALL');
+  const [approvalFilterTab, setApprovalFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'QUOTE_INCLUDED' | 'QUOTE_EXCLUDED'>('ALL');
+  const [quoteFilterTab, setQuoteFilterTab] = useState<'ALL' | 'INCLUDED' | 'EXCLUDED'>('ALL');
   const [approvalSearchText, setApprovalSearchText] = useState('');
   const [approvalViewMode, setApprovalViewMode] = useState<'TABLE' | 'CARD'>('TABLE');
   const [selectedApprovalIds, setSelectedApprovalIds] = useState<string[]>([]);
@@ -841,19 +842,43 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   };
 
   // 8-1. Toggle Quote Drawing Inclusion (도면별 견적 체크박스 실시간 연동)
-  const handleToggleQuoteDrawing = async (drawingNos: string[], isIncluded: boolean) => {
-    if (!latestQuote || latestQuote.is_locked) return;
-
+  const handleToggleQuoteDrawing = async (drawingNos: string[], isIncluded: boolean, reason?: string) => {
     // Optimistic UI Update (0ms instant response)
     setData((prev: any) => {
-      if (!prev || !prev.quoteItems) return prev;
+      if (!prev) return prev;
       const noSet = new Set(drawingNos);
       const incVal = isIncluded ? 1 : 0;
-      const updatedItems = prev.quoteItems.map((qi: any) => {
+
+      // 1. Update Drawings
+      const updatedDrawings = (prev.drawings || []).map((dwg: any) => {
+        if (noSet.has(dwg.drawing_no_raw) || noSet.has(dwg.drawing_no_normalized)) {
+          return {
+            ...dwg,
+            is_quote_included: incVal,
+            exclude_reason: isIncluded ? null : (reason !== undefined ? reason : dwg.exclude_reason)
+          };
+        }
+        return dwg;
+      });
+
+      // 2. Update Quote Items
+      const updatedItems = (prev.quoteItems || []).map((qi: any) => {
         if (noSet.has(qi.drawing_no) || noSet.has(qi.item_name)) {
           return { ...qi, is_included: incVal };
         }
         return qi;
+      });
+
+      // 3. Update Normalized BOM items
+      const updatedBom = (prev.normalizedBomItems || []).map((bi: any) => {
+        if (noSet.has(bi.part_no) || noSet.has(bi.part_name)) {
+          return {
+            ...bi,
+            is_quote_included: incVal,
+            exclude_reason: isIncluded ? null : (reason !== undefined ? reason : bi.exclude_reason)
+          };
+        }
+        return bi;
       });
 
       const activeSubtotal = updatedItems
@@ -865,17 +890,20 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
       const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
         if (idx === 0) {
-          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+          return { ...q, is_locked: 0, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
         }
         return q;
       });
 
       return {
         ...prev,
+        drawings: updatedDrawings,
         quoteItems: updatedItems,
+        normalizedBomItems: updatedBom,
         quotes: updatedQuotes,
         latestQuote: prev.latestQuote ? {
           ...prev.latestQuote,
+          is_locked: 0,
           subtotal: activeSubtotal,
           tax_amount: taxAmount,
           total_amount: totalAmount
@@ -887,7 +915,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ drawingNos, isIncluded })
+        body: JSON.stringify({ drawingNos, isIncluded, reason })
       });
       if (res.ok) {
         const resJson = await res.json();
@@ -897,6 +925,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             if (idx === 0) {
               return {
                 ...q,
+                is_locked: 0,
                 subtotal: resJson.subtotal,
                 tax_amount: resJson.taxAmount,
                 total_amount: resJson.totalAmount
@@ -909,6 +938,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             quotes: updatedQuotes,
             latestQuote: prev.latestQuote ? {
               ...prev.latestQuote,
+              is_locked: 0,
               subtotal: resJson.subtotal,
               tax_amount: resJson.taxAmount,
               total_amount: resJson.totalAmount
@@ -924,12 +954,22 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   // 8-2. Toggle All Quote Drawings Inclusion
   const handleToggleAllQuoteDrawings = async (isIncluded: boolean) => {
     setQuoteDropdownOpen(false);
-    if (!latestQuote || latestQuote.is_locked) return;
 
     const incVal = isIncluded ? 1 : 0;
     setData((prev: any) => {
-      if (!prev || !prev.quoteItems) return prev;
-      const updatedItems = prev.quoteItems.map((qi: any) => ({ ...qi, is_included: incVal }));
+      if (!prev) return prev;
+      const updatedDrawings = (prev.drawings || []).map((d: any) => ({
+        ...d,
+        is_quote_included: incVal,
+        exclude_reason: isIncluded ? null : '일괄 제외'
+      }));
+      const updatedItems = (prev.quoteItems || []).map((qi: any) => ({ ...qi, is_included: incVal }));
+      const updatedBom = (prev.normalizedBomItems || []).map((bi: any) => ({
+        ...bi,
+        is_quote_included: incVal,
+        exclude_reason: isIncluded ? null : '일괄 제외'
+      }));
+
       const activeSubtotal = isIncluded
         ? updatedItems.reduce((sum: number, qi: any) => sum + (Number(qi.amount) || 0), 0)
         : 0;
@@ -939,17 +979,20 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
       const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
         if (idx === 0) {
-          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+          return { ...q, is_locked: 0, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
         }
         return q;
       });
 
       return {
         ...prev,
+        drawings: updatedDrawings,
         quoteItems: updatedItems,
+        normalizedBomItems: updatedBom,
         quotes: updatedQuotes,
         latestQuote: prev.latestQuote ? {
           ...prev.latestQuote,
+          is_locked: 0,
           subtotal: activeSubtotal,
           tax_amount: taxAmount,
           total_amount: totalAmount
@@ -971,6 +1014,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             if (idx === 0) {
               return {
                 ...q,
+                is_locked: 0,
                 subtotal: resJson.subtotal,
                 tax_amount: resJson.taxAmount,
                 total_amount: resJson.totalAmount
@@ -983,6 +1027,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             quotes: updatedQuotes,
             latestQuote: prev.latestQuote ? {
               ...prev.latestQuote,
+              is_locked: 0,
               subtotal: resJson.subtotal,
               tax_amount: resJson.taxAmount,
               total_amount: resJson.totalAmount
@@ -998,7 +1043,6 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   // 8-3. Select Priced Items Only (단가 있는 품목만 선택)
   const handleSelectPricedOnly = async () => {
     setQuoteDropdownOpen(false);
-    if (!latestQuote || latestQuote.is_locked) return;
 
     setData((prev: any) => {
       if (!prev || !prev.quoteItems) return prev;
@@ -1016,7 +1060,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
       const updatedQuotes = (prev.quotes || []).map((q: any, idx: number) => {
         if (idx === 0) {
-          return { ...q, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
+          return { ...q, is_locked: 0, subtotal: activeSubtotal, tax_amount: taxAmount, total_amount: totalAmount };
         }
         return q;
       });
@@ -1027,6 +1071,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         quotes: updatedQuotes,
         latestQuote: prev.latestQuote ? {
           ...prev.latestQuote,
+          is_locked: 0,
           subtotal: activeSubtotal,
           tax_amount: taxAmount,
           total_amount: totalAmount
@@ -1048,6 +1093,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             if (idx === 0) {
               return {
                 ...q,
+                is_locked: 0,
                 subtotal: resJson.subtotal,
                 tax_amount: resJson.taxAmount,
                 total_amount: resJson.totalAmount
@@ -1060,6 +1106,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             quotes: updatedQuotes,
             latestQuote: prev.latestQuote ? {
               ...prev.latestQuote,
+              is_locked: 0,
               subtotal: resJson.subtotal,
               tax_amount: resJson.taxAmount,
               total_amount: resJson.totalAmount
@@ -1069,6 +1116,42 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       }
     } catch (err) {
       console.error('Failed to sync select priced only:', err);
+    }
+  };
+
+  // 8-4. Exclude Duplicate Drawings (중복 도면 2번째 이후 일괄 제외)
+  const handleExcludeDuplicates = async () => {
+    setData((prev: any) => {
+      if (!prev) return prev;
+      const seen = new Set<string>();
+      const updatedDrawings = (prev.drawings || []).map((dwg: any) => {
+        const rawNo = (dwg.drawing_no_raw || '').trim();
+        if (!rawNo) return dwg;
+        if (seen.has(rawNo)) {
+          return { ...dwg, is_quote_included: 0, exclude_reason: '중복 도면' };
+        } else {
+          seen.add(rawNo);
+          return dwg;
+        }
+      });
+
+      return {
+        ...prev,
+        drawings: updatedDrawings
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ excludeDuplicates: true })
+      });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch (err) {
+      console.error('Failed to sync exclude duplicate drawings:', err);
     }
   };
 
@@ -1142,11 +1225,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const approvedItemIds = new Set(finalBomItems.map((f: any) => f.normalized_item_id));
   const pendingItemsCount = normalizedItems.filter((ni: any) => !approvedItemIds.has(ni.id)).length;
   const approvedItemsCount = normalizedItems.filter((ni: any) => approvedItemIds.has(ni.id)).length;
+  const quoteIncCount = normalizedItems.filter((ni: any) => ni.is_quote_included !== 0).length;
+  const quoteExcCount = normalizedItems.filter((ni: any) => ni.is_quote_included === 0).length;
 
   const filteredNormalizedItems = normalizedItems.filter((ni: any) => {
     const isApproved = approvedItemIds.has(ni.id);
     if (approvalFilterTab === 'PENDING' && isApproved) return false;
     if (approvalFilterTab === 'APPROVED' && !isApproved) return false;
+    if (approvalFilterTab === 'QUOTE_INCLUDED' && ni.is_quote_included === 0) return false;
+    if (approvalFilterTab === 'QUOTE_EXCLUDED' && (ni.is_quote_included === undefined || ni.is_quote_included === 1)) return false;
     if (approvalSearchText.trim()) {
       const query = approvalSearchText.trim().toLowerCase();
       const dwgNo = (ni.drawing_no || '').toLowerCase();
@@ -1783,6 +1870,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               latestQuote={latestQuote}
               onToggleQuoteItem={handleToggleQuoteDrawing}
               onToggleAllQuoteDrawings={handleToggleAllQuoteDrawings}
+              onExcludeDuplicates={handleExcludeDuplicates}
               selectedFile={activeFile}
               onStartAnalysis={handleStartAnalysis}
               isAnalyzing={analyzing}
@@ -1873,6 +1961,67 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
 
+              {/* Quote Filter Tabs & Fast Actions Toolbar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setQuoteFilterTab('ALL')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      quoteFilterTab === 'ALL'
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    전체 ({quoteItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuoteFilterTab('INCLUDED')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      quoteFilterTab === 'INCLUDED'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    <span>견적 포함</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      quoteFilterTab === 'INCLUDED' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {quoteItems.filter((q: any) => q.is_included !== 0).length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuoteFilterTab('EXCLUDED')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      quoteFilterTab === 'EXCLUDED'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-700 hover:bg-rose-50'
+                    }`}
+                  >
+                    <span>견적 제외</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      quoteFilterTab === 'EXCLUDED' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {quoteItems.filter((q: any) => q.is_included === 0).length}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleExcludeDuplicates}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer flex items-center space-x-1.5 shadow-2xs"
+                    title="중복 배치된 도면 품목을 자동으로 감지하여 1건만 포함하고 나머지는 견적에서 일괄 제외합니다."
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    <span>중복본 일괄 제외</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Quote Items Table */}
               <div className="overflow-x-auto min-h-[260px]">
                 <table className="w-full text-xs text-left border-collapse">
@@ -1884,12 +2033,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           <button
                             type="button"
                             onClick={() => setQuoteDropdownOpen(!quoteDropdownOpen)}
-                            disabled={latestQuote.is_locked}
                             className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded border text-[11px] font-bold transition-all cursor-pointer ${
                               quoteDropdownOpen
                                 ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
                                 : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 shadow-2xs'
-                            } disabled:opacity-50`}
+                            }`}
                             title="견적 체크박스 전체선택 / 전체해제 풀다운 메뉴"
                           >
                             <span>견적</span>
@@ -1902,7 +2050,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
                           {/* Pull-down Menu Popover */}
                           {quoteDropdownOpen && (
-                            <div className="absolute left-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1.5 text-left text-xs animate-in fade-in zoom-in-95">
+                            <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1.5 text-left text-xs animate-in fade-in zoom-in-95">
                               <div className="px-3 py-1.5 border-b border-slate-100 text-[11px] text-slate-500 font-medium flex items-center justify-between">
                                 <span>견적 포함 항목 제어</span>
                                 <span className="font-bold font-mono text-blue-600">
@@ -1945,6 +2093,21 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                 <div className="leading-tight">
                                   <div className="font-bold text-slate-800">단가 있는 품목만 선택</div>
                                   <div className="text-[10px] text-slate-400 font-normal">미단가(0원) 품목 제외</div>
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQuoteDropdownOpen(false);
+                                  handleExcludeDuplicates();
+                                }}
+                                className="w-full px-3 py-2 text-left text-slate-700 hover:bg-purple-50 hover:text-purple-800 flex items-center space-x-2 cursor-pointer font-semibold transition-colors border-t border-slate-100"
+                              >
+                                <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                                <div className="leading-tight">
+                                  <div className="font-bold text-slate-800">중복 도면 일괄 제외</div>
+                                  <div className="text-[10px] text-slate-400 font-normal">중복 배치본 자동 제외</div>
                                 </div>
                               </button>
                             </div>
@@ -1992,7 +2155,13 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/60">
-                    {quoteItems.map((qi: any, idx: number) => {
+                    {quoteItems
+                      .filter((qi: any) => {
+                        if (quoteFilterTab === 'INCLUDED') return qi.is_included !== 0;
+                        if (quoteFilterTab === 'EXCLUDED') return qi.is_included === 0;
+                        return true;
+                      })
+                      .map((qi: any, idx: number) => {
                       const isStripe = idx % 2 === 1;
                       const isExcluded = qi.is_included === 0;
                       return (
@@ -2013,7 +2182,6 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                             <input
                               type="checkbox"
                               checked={!isExcluded}
-                              disabled={latestQuote.is_locked}
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 handleToggleQuoteDrawing([qi.drawing_no || qi.item_name], checked);
@@ -2023,7 +2191,12 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                             />
                           </td>
                           <td className={`py-1.5 px-3 font-semibold ${isExcluded ? 'text-slate-400' : 'text-slate-900'}`}>
-                            {qi.master_code}
+                            <span>{qi.master_code}</span>
+                            {isExcluded && (
+                              <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-slate-200 text-slate-600 border border-slate-300">
+                                제외됨
+                              </span>
+                            )}
                           </td>
                           <td className="py-1 px-2 text-center whitespace-nowrap">
                             <button
@@ -2590,6 +2763,38 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                       {approvedItemsCount}
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setApprovalFilterTab('QUOTE_INCLUDED')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      approvalFilterTab === 'QUOTE_INCLUDED'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-700 hover:bg-blue-100/60'
+                    }`}
+                  >
+                    <span>견적대상</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      approvalFilterTab === 'QUOTE_INCLUDED' ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {quoteIncCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setApprovalFilterTab('QUOTE_EXCLUDED')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      approvalFilterTab === 'QUOTE_EXCLUDED'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-700 hover:bg-rose-100/60'
+                    }`}
+                  >
+                    <span>견적제외</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      approvalFilterTab === 'QUOTE_EXCLUDED' ? 'bg-white/25 text-white' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {quoteExcCount}
+                    </span>
+                  </button>
                 </div>
 
                 {/* Search Box */}
@@ -2789,6 +2994,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   <span className={`font-semibold ${isSelected ? 'text-blue-950' : 'text-slate-900'}`}>
                                     {ni.drawing_name || ni.normalized_name}
                                   </span>
+                                  {ni.is_quote_included === 0 && (
+                                    <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-block">
+                                      견적 제외{ni.exclude_reason ? ` (${ni.exclude_reason})` : ''}
+                                    </span>
+                                  )}
                                 </td>
 
                                 {/* Status Badge & Unapprove Action (Jitter-free) */}

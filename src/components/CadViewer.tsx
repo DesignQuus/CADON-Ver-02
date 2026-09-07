@@ -103,8 +103,9 @@ interface CadViewerProps {
   onClearExternalFocus?: () => void;
   quoteItems?: any[];
   latestQuote?: any;
-  onToggleQuoteItem?: (drawingNos: string[], isIncluded: boolean) => void;
+  onToggleQuoteItem?: (drawingNos: string[], isIncluded: boolean, reason?: string) => void;
   onToggleAllQuoteDrawings?: (isIncluded: boolean) => void;
+  onExcludeDuplicates?: () => void;
   selectedFile?: any;
   onStartAnalysis?: (fileId: string) => void;
   isAnalyzing?: boolean;
@@ -127,6 +128,7 @@ export default function CadViewer({
   latestQuote,
   onToggleQuoteItem,
   onToggleAllQuoteDrawings,
+  onExcludeDuplicates,
   selectedFile,
   onStartAnalysis,
   isAnalyzing = false,
@@ -149,6 +151,7 @@ export default function CadViewer({
   const [titleBlockSearch, setTitleBlockSearch] = useState<string>('');
   const [filterDuplicatesOnly, setFilterDuplicatesOnly] = useState<boolean>(false);
   const [highlightDrawingIds, setHighlightDrawingIds] = useState<string[]>([]);
+  const [reasonMenuDwgId, setReasonMenuDwgId] = useState<string | null>(null);
 
   // External CAD launch & Archiving states
   const [openingCad, setOpeningCad] = useState(false);
@@ -846,6 +849,16 @@ export default function CadViewer({
     return map;
   }, [relationships]);
 
+  // 💎 Drawing Map (keyed by raw & normalized drawing numbers)
+  const drawingMap = useMemo(() => {
+    const map = new Map<string, any>();
+    (drawings || []).forEach((d: any) => {
+      if (d.drawing_no_raw) map.set(d.drawing_no_raw, d);
+      if (d.drawing_no_normalized) map.set(d.drawing_no_normalized, d);
+    });
+    return map;
+  }, [drawings]);
+
   // 💎 Quote Item Map (keyed by drawing_no and item_name)
   const quoteItemMap = useMemo(() => {
     const map = new Map<string, any>();
@@ -896,7 +909,7 @@ export default function CadViewer({
     return all;
   }, [treeChildrenMap]);
 
-  // 💎 Compute quotation details for any drawing row
+  // 💎 Compute quotation details for any drawing row (Drawing + Quote Engine synchronized)
   const getDrawingQuoteInfo = useCallback((d: any) => {
     const isAssy = d.drawing_type === 'MAIN_ASSEMBLY' || d.drawing_type === 'SUB_ASSEMBLY';
 
@@ -906,8 +919,10 @@ export default function CadViewer({
       let subtotal = 0;
 
       leafNos.forEach(no => {
+        const leafDwg = drawingMap.get(no);
         const item = quoteItemMap.get(no);
-        const isInc = item ? item.is_included !== 0 : true;
+        const dwgInc = leafDwg?.is_quote_included !== undefined ? leafDwg.is_quote_included === 1 : true;
+        const isInc = item ? (item.is_included !== 0 && dwgInc) : dwgInc;
         if (isInc) {
           checkedCount++;
           subtotal += Number(item?.amount || 0);
@@ -931,11 +946,13 @@ export default function CadViewer({
         quantity: 1,
         unitPrice: 0,
         amount: subtotal,
-        isIncluded: checkState !== 'unchecked'
+        isIncluded: checkState !== 'unchecked',
+        excludeReason: d.exclude_reason || null
       };
     } else {
       const item = quoteItemMap.get(d.drawing_no_raw) || quoteItemMap.get(d.drawing_name_raw);
-      const isIncluded = item ? item.is_included !== 0 : true;
+      const dwgInc = d.is_quote_included !== undefined ? d.is_quote_included === 1 : true;
+      const isIncluded = item ? (item.is_included !== 0 && dwgInc) : dwgInc;
       const unitPrice = item?.unit_price ?? 0;
       const quantity = item?.quantity ?? 1;
       const amount = isIncluded ? (item?.amount ?? (quantity * unitPrice)) : 0;
@@ -948,10 +965,11 @@ export default function CadViewer({
         quantity,
         unitPrice,
         amount,
-        isIncluded
+        isIncluded,
+        excludeReason: d.exclude_reason || null
       };
     }
-  }, [quoteItemMap, getDescendantLeafNos]);
+  }, [quoteItemMap, drawingMap, getDescendantLeafNos]);
 
   // 💎 Global quotation summary across all drawing rows
   const quoteSummary = useMemo(() => {
@@ -964,8 +982,10 @@ export default function CadViewer({
     hierarchicalDrawings.forEach(d => {
       if (d.drawing_type !== 'MAIN_ASSEMBLY' && d.drawing_type !== 'SUB_ASSEMBLY') {
         totalParts++;
+        const leafDwg = drawingMap.get(d.drawing_no_raw) || d;
         const item = quoteItemMap.get(d.drawing_no_raw) || quoteItemMap.get(d.drawing_name_raw);
-        const isInc = item ? item.is_included !== 0 : true;
+        const dwgInc = leafDwg?.is_quote_included !== undefined ? leafDwg.is_quote_included === 1 : true;
+        const isInc = item ? (item.is_included !== 0 && dwgInc) : dwgInc;
         const q = Number(item?.quantity) || 1;
         totalQty += q;
         if (isInc) {
@@ -993,7 +1013,7 @@ export default function CadViewer({
       includedQty,
       masterState
     };
-  }, [hierarchicalDrawings, quoteItemMap]);
+  }, [hierarchicalDrawings, quoteItemMap, drawingMap]);
 
   // Instant Precision Zoom: Switches directly from Excel Sheet to CAD Vector Canvas!
   const handleZoomToRow = (dwg: any) => {
@@ -1963,6 +1983,17 @@ export default function CadViewer({
                   >
                     전체 제외
                   </button>
+                  {duplicateStats.rowCount > duplicateStats.groupCount && (
+                    <button
+                      type="button"
+                      onClick={() => onExcludeDuplicates && onExcludeDuplicates()}
+                      className="px-2.5 py-0.5 text-[10px] bg-purple-950/80 hover:bg-purple-900 text-purple-200 hover:text-white rounded border border-purple-500/50 transition-colors cursor-pointer font-bold flex items-center space-x-1 shadow-2xs"
+                      title="동일 도면 번호 중복 배치 시 1번째 원본만 견적에 남기고 2번째 이후 중복본은 견적에서 자동 일괄 제외합니다."
+                    >
+                      <Sparkles className="w-3 h-3 text-purple-400" />
+                      <span>중복본 일괄 제외 ({duplicateStats.rowCount - duplicateStats.groupCount}건)</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* ⚠️ Duplicate Drawings Quick Filter Toggle */}
@@ -2071,13 +2102,13 @@ export default function CadViewer({
                           {i + 1}
                         </td>
 
-                        {/* 💎 견적 체크박스 (Tri-State 지원) */}
+                        {/* 💎 견적 체크박스 (Tri-State 지원 & 제외 사유 태깅) */}
                         <td 
-                          className="py-2 px-2 text-center border-r border-slate-800/70"
+                          className="py-2 px-2 text-center border-r border-slate-800/70 relative"
                           onClick={(e) => e.stopPropagation()}
                           onDoubleClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center justify-center">
+                          <div className="flex flex-col items-center justify-center space-y-1">
                             <TriStateCheckbox
                               state={info.checkState}
                               onChange={() => {
@@ -2095,6 +2126,42 @@ export default function CadViewer({
                                   : info.isIncluded ? '견적 포함됨 (클릭 시 견적 제외)' : '견적 제외됨 (클릭 시 견적 포함)'
                               }
                             />
+                            {!info.isIncluded && (
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReasonMenuDwgId(reasonMenuDwgId === (d.id || d.drawing_no_raw) ? null : (d.id || d.drawing_no_raw));
+                                  }}
+                                  className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-950/80 text-rose-300 border border-rose-700/70 hover:bg-rose-900 transition-colors whitespace-nowrap cursor-pointer shadow-2xs"
+                                  title="클릭 시 견적 제외 사유(고객 사급품, 중복 도면 등)를 선택합니다."
+                                >
+                                  제외{d.exclude_reason ? `:${d.exclude_reason.slice(0, 4)}` : ''}
+                                </button>
+                                {reasonMenuDwgId === (d.id || d.drawing_no_raw) && (
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-32 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-50 py-1 text-[10.5px] font-sans text-left">
+                                    <div className="px-2 py-0.5 text-[9.5px] text-slate-400 font-bold border-b border-slate-800">
+                                      제외 사유 선택
+                                    </div>
+                                    {['중복 도면', '고객 사급품', '참고 도면', '시중 구매품', '2차 발주분', '단순 제외'].map((reasonOption) => (
+                                      <button
+                                        key={reasonOption}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setReasonMenuDwgId(null);
+                                          onToggleQuoteItem && onToggleQuoteItem([d.drawing_no_raw], false, reasonOption);
+                                        }}
+                                        className="w-full px-2 py-1 hover:bg-slate-800 text-slate-200 text-left font-medium transition-colors"
+                                      >
+                                        {reasonOption}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </td>
 

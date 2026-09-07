@@ -20,8 +20,80 @@ export async function POST(
 
   try {
     const body = await req.json();
-    const { drawingNos, isIncluded, all } = body;
+    const { drawingNos, isIncluded, all, pricedOnly, excludeDuplicates, reason } = body;
+    const flagVal = isIncluded ? 1 : 0;
+    const excludeReasonStr = !isIncluded ? (reason || '견적 담당자 제외 설정') : null;
 
+    // 1. Update drawings table (Primary source of truth for CAD drawing package)
+    if (all) {
+      db.prepare(`
+        UPDATE drawings 
+        SET is_quote_included = ?, exclude_reason = ?
+        WHERE quotation_case_id = ?
+      `).run(flagVal, excludeReasonStr, id);
+
+      db.prepare(`
+        UPDATE normalized_bom_items
+        SET is_quote_included = ?, exclude_reason = ?
+        WHERE quotation_case_id = ?
+      `).run(flagVal, excludeReasonStr, id);
+    } else if (excludeDuplicates) {
+      // 💎 Senior Manager Preset: Keep 1st instance of duplicates, exclude others
+      const allDwgs = db.prepare(`
+        SELECT id, drawing_no_raw, drawing_index 
+        FROM drawings 
+        WHERE quotation_case_id = ? 
+        ORDER BY drawing_index ASC
+      `).all(id) as any[];
+
+      const seen = new Set<string>();
+      const idsToExclude: string[] = [];
+      const idsToInclude: string[] = [];
+
+      for (const d of allDwgs) {
+        const no = (d.drawing_no_raw || '').trim();
+        if (!no) continue;
+        if (seen.has(no)) {
+          idsToExclude.push(d.id);
+        } else {
+          seen.add(no);
+          idsToInclude.push(d.id);
+        }
+      }
+
+      if (idsToExclude.length > 0) {
+        const excludePlaceholders = idsToExclude.map(() => '?').join(',');
+        db.prepare(`
+          UPDATE drawings
+          SET is_quote_included = 0, exclude_reason = '중복 도면 (단일 품목 견적 반영)'
+          WHERE id IN (${excludePlaceholders})
+        `).run(...idsToExclude);
+      }
+
+      if (idsToInclude.length > 0) {
+        const includePlaceholders = idsToInclude.map(() => '?').join(',');
+        db.prepare(`
+          UPDATE drawings
+          SET is_quote_included = 1, exclude_reason = NULL
+          WHERE id IN (${includePlaceholders})
+        `).run(...idsToInclude);
+      }
+    } else if (Array.isArray(drawingNos) && drawingNos.length > 0) {
+      const placeholders = drawingNos.map(() => '?').join(',');
+      db.prepare(`
+        UPDATE drawings 
+        SET is_quote_included = ?, exclude_reason = ?
+        WHERE quotation_case_id = ? AND (drawing_no_raw IN (${placeholders}) OR drawing_no_normalized IN (${placeholders}) OR drawing_name_raw IN (${placeholders}))
+      `).run(flagVal, excludeReasonStr, id, ...drawingNos, ...drawingNos, ...drawingNos);
+
+      db.prepare(`
+        UPDATE normalized_bom_items
+        SET is_quote_included = ?, exclude_reason = ?
+        WHERE quotation_case_id = ? AND (raw_name IN (${placeholders}) OR normalized_name IN (${placeholders}))
+      `).run(flagVal, excludeReasonStr, id, ...drawingNos, ...drawingNos);
+    }
+
+    // 2. Synchronize with quotes and quote_items if a quote exists
     const latestQuote = db.prepare(`
       SELECT * FROM quotes 
       WHERE quotation_case_id = ? 
@@ -29,97 +101,120 @@ export async function POST(
       LIMIT 1
     `).get(id) as any;
 
-    if (!latestQuote) {
-      return NextResponse.json({ error: '생성된 견적서가 없습니다.' }, { status: 400 });
-    }
+    let subtotal = 0;
+    let taxAmount = 0;
+    let totalAmount = 0;
+    let totalItems = 0;
+    let includedItems = 0;
 
-    if (latestQuote.is_locked) {
-      return NextResponse.json({ error: '잠금(Lock) 승인된 견적서는 수정할 수 없습니다.' }, { status: 400 });
-    }
+    if (latestQuote) {
+      // Auto-unlock if locked so manager edits are smoothly applied
+      if (latestQuote.is_locked) {
+        db.prepare("UPDATE quotes SET is_locked = 0, status = 'DRAFT' WHERE id = ?").run(latestQuote.id);
+      }
 
-    const flagVal = isIncluded ? 1 : 0;
-
-    if (all) {
-      db.prepare(`
-        UPDATE quote_items 
-        SET is_included = ? 
-        WHERE quote_id = ?
-      `).run(flagVal, latestQuote.id);
-    } else if (body.pricedOnly) {
-      db.prepare(`
-        UPDATE quote_items 
-        SET is_included = CASE WHEN unit_price > 0 THEN 1 ELSE 0 END 
-        WHERE quote_id = ?
-      `).run(latestQuote.id);
-    } else if (Array.isArray(drawingNos) && drawingNos.length > 0) {
-      const placeholders = drawingNos.map(() => '?').join(',');
-      const matchedItems = db.prepare(`
-        SELECT qi.id 
-        FROM quote_items qi
-        LEFT JOIN final_bom_items fbi ON qi.final_bom_item_id = fbi.id
-        LEFT JOIN flattened_bom_items fb ON fb.id = REPLACE(fbi.normalized_item_id, 'norm_', 'fb_')
-        WHERE qi.quote_id = ? AND (fb.part_no IN (${placeholders}) OR qi.item_name IN (${placeholders}))
-      `).all(latestQuote.id, ...drawingNos, ...drawingNos) as any[];
-
-      const itemIds = matchedItems.map(m => m.id);
-      if (itemIds.length > 0) {
-        const itemPlaceholders = itemIds.map(() => '?').join(',');
+      if (all) {
         db.prepare(`
           UPDATE quote_items 
           SET is_included = ? 
-          WHERE id IN (${itemPlaceholders})
-        `).run(flagVal, ...itemIds);
+          WHERE quote_id = ?
+        `).run(flagVal, latestQuote.id);
+      } else if (pricedOnly) {
+        db.prepare(`
+          UPDATE quote_items 
+          SET is_included = CASE WHEN unit_price > 0 THEN 1 ELSE 0 END 
+          WHERE quote_id = ?
+        `).run(latestQuote.id);
+      } else if (excludeDuplicates) {
+        // Sync quote items with excluded drawings
+        const excludedDwgNos = db.prepare(`
+          SELECT drawing_no_raw FROM drawings WHERE quotation_case_id = ? AND is_quote_included = 0
+        `).all(id).map((r: any) => r.drawing_no_raw);
+
+        if (excludedDwgNos.length > 0) {
+          const exPl = excludedDwgNos.map(() => '?').join(',');
+          db.prepare(`
+            UPDATE quote_items 
+            SET is_included = 0
+            WHERE quote_id = ? AND drawing_no IN (${exPl})
+          `).run(latestQuote.id, ...excludedDwgNos);
+        }
+      } else if (Array.isArray(drawingNos) && drawingNos.length > 0) {
+        const placeholders = drawingNos.map(() => '?').join(',');
+        db.prepare(`
+          UPDATE quote_items 
+          SET is_included = ? 
+          WHERE quote_id = ? AND (drawing_no IN (${placeholders}) OR item_name IN (${placeholders}))
+        `).run(flagVal, latestQuote.id, ...drawingNos, ...drawingNos);
       }
+
+      // Recalculate Subtotal, VAT, Total
+      const sumResult = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as active_subtotal
+        FROM quote_items
+        WHERE quote_id = ? AND is_included = 1
+      `).get(latestQuote.id) as any;
+
+      subtotal = sumResult?.active_subtotal || 0;
+      const taxRate = latestQuote.tax_rate ?? 0.10;
+      taxAmount = Math.round(subtotal * taxRate);
+      totalAmount = subtotal + taxAmount;
+
+      db.prepare(`
+        UPDATE quotes 
+        SET subtotal = ?, tax_amount = ?, total_amount = ?, updated_at = ?
+        WHERE id = ?
+      `).run(subtotal, taxAmount, totalAmount, new Date().toISOString(), latestQuote.id);
+
+      // Get quote item counts
+      const counts = db.prepare(`
+        SELECT 
+          COUNT(*) as total_items,
+          SUM(CASE WHEN is_included = 1 THEN 1 ELSE 0 END) as included_items
+        FROM quote_items
+        WHERE quote_id = ?
+      `).get(latestQuote.id) as any;
+
+      totalItems = counts?.total_items || 0;
+      includedItems = counts?.included_items || 0;
     }
 
-    // Recalculate Subtotal, VAT, Total
-    const sumResult = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as active_subtotal
-      FROM quote_items
-      WHERE quote_id = ? AND is_included = 1
-    `).get(latestQuote.id) as any;
-
-    const subtotal = sumResult?.active_subtotal || 0;
-    const taxRate = latestQuote.tax_rate ?? 0.10;
-    const taxAmount = Math.round(subtotal * taxRate);
-    const totalAmount = subtotal + taxAmount;
-
-    db.prepare(`
-      UPDATE quotes 
-      SET subtotal = ?, tax_amount = ?, total_amount = ?, updated_at = ?
-      WHERE id = ?
-    `).run(subtotal, taxAmount, totalAmount, new Date().toISOString(), latestQuote.id);
-
-    // Get current counts
-    const counts = db.prepare(`
+    // 3. Get drawing level counts
+    const dwgCounts = db.prepare(`
       SELECT 
-        COUNT(*) as total_items,
-        SUM(CASE WHEN is_included = 1 THEN 1 ELSE 0 END) as included_items
-      FROM quote_items
-      WHERE quote_id = ?
-    `).get(latestQuote.id) as any;
+        COUNT(*) as total_drawings,
+        SUM(CASE WHEN is_quote_included = 1 THEN 1 ELSE 0 END) as included_drawings,
+        SUM(CASE WHEN is_quote_included = 0 THEN 1 ELSE 0 END) as excluded_drawings
+      FROM drawings
+      WHERE quotation_case_id = ?
+    `).get(id) as any;
 
-    // Audit log: QUOTE_TOGGLE
+    // 4. Audit Log
     const toggleDesc = all
-      ? (flagVal ? '견적 품목 전체 선택' : '견적 품목 전체 해제')
-      : body.pricedOnly
-      ? '단가 있는 품목만 자동 선택'
-      : `도면/품목 [${(drawingNos || []).slice(0, 3).join(', ')}${(drawingNos || []).length > 3 ? ` 외 ${(drawingNos || []).length - 3}건` : ''}] 견적 ${flagVal ? '포함' : '제외'}`;
+      ? (flagVal ? '전체 도면/품목 견적 일괄 포함' : '전체 도면/품목 견적 일괄 제외')
+      : excludeDuplicates
+      ? '중복 도면(중복본) 견적 일괄 제외'
+      : pricedOnly
+      ? '단가 있는 품목만 견적 포함'
+      : `도면/품목 [${(drawingNos || []).slice(0, 3).join(', ')}${(drawingNos || []).length > 3 ? ` 외 ${(drawingNos || []).length - 3}건` : ''}] 견적 ${flagVal ? '포함' : `제외 (${excludeReasonStr || '제외'})`}`;
 
     await recordActivity(req, session, {
       activityType: 'QUOTE_TOGGLE',
       quotationCaseId: id,
-      details: `${toggleDesc} (포함: ${counts?.included_items || 0} / 총: ${counts?.total_items || 0} EA)`
+      details: `${toggleDesc} (견적 대상 도면: ${dwgCounts?.included_drawings || 0} / 총 ${dwgCounts?.total_drawings || 0}개)`
     });
 
     return NextResponse.json({
       success: true,
-      quoteId: latestQuote.id,
+      quoteId: latestQuote?.id || null,
       subtotal,
       taxAmount,
       totalAmount,
-      totalItems: counts?.total_items || 0,
-      includedItems: counts?.included_items || 0
+      totalItems,
+      includedItems,
+      totalDrawings: dwgCounts?.total_drawings || 0,
+      includedDrawings: dwgCounts?.included_drawings || 0,
+      excludedDrawings: dwgCounts?.excluded_drawings || 0
     });
   } catch (error: any) {
     console.error('toggle-quote-drawing error:', error);

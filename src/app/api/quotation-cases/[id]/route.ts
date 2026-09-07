@@ -134,7 +134,7 @@ export async function GET(
     quoteItems = db.prepare(`
       SELECT 
         qi.*,
-        COALESCE(fb.part_no, '') as drawing_no,
+        COALESCE(NULLIF(qi.drawing_no, ''), fb.part_no, '') as drawing_no,
         COALESCE(fb.name, qi.item_name) as drawing_name
       FROM quote_items qi
       LEFT JOIN final_bom_items fbi ON qi.final_bom_item_id = fbi.id
