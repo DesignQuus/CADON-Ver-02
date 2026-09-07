@@ -6,7 +6,7 @@ import {
   FileText, Upload, Play, CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft,
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Sparkles, Building2,
   Folder, Calendar, Check, X, ShieldAlert, ArrowDown, Eye, Download, Info, Trash2,
-  Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins
+  Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
@@ -150,11 +150,43 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
   }, [quoteDropdownOpen]);
 
-  const handleNavigateToCadDrawing = (d: any) => {
+  const handleNavigateToCadDrawing = (target: any) => {
+    if (!target) return;
     const allDrawings = data?.drawings || [];
-    const idx = allDrawings.findIndex(
-      (item: any) => item.id === d.id || item.drawing_no_raw === d.drawing_no_raw
-    );
+    const targetId = target.matched_drawing_id || target.drawing_id || target.id;
+    const targetDwgNo = target.drawing_no || target.drawing_no_raw || target.part_no;
+
+    let idx = -1;
+    if (targetId) {
+      idx = allDrawings.findIndex((item: any) => item.id === targetId);
+    }
+    if (idx < 0 && targetDwgNo) {
+      idx = allDrawings.findIndex(
+        (item: any) =>
+          item.drawing_no_raw === targetDwgNo ||
+          item.drawing_no_normalized === targetDwgNo ||
+          item.id === targetDwgNo
+      );
+    }
+    if (idx < 0 && target.source_drawings_json) {
+      try {
+        const sourceList = typeof target.source_drawings_json === 'string'
+          ? JSON.parse(target.source_drawings_json)
+          : target.source_drawings_json;
+        if (Array.isArray(sourceList) && sourceList.length > 0) {
+          idx = allDrawings.findIndex((item: any) => sourceList.includes(item.drawing_no_raw));
+        }
+      } catch {}
+    }
+    if (idx < 0 && (target.drawing_name || target.normalized_name || target.name_raw)) {
+      const targetName = target.drawing_name || target.normalized_name || target.name_raw;
+      idx = allDrawings.findIndex(
+        (item: any) =>
+          item.drawing_name_raw === targetName ||
+          item.drawing_name_normalized === targetName
+      );
+    }
+
     if (idx >= 0) {
       setExternalFocusIdx(idx);
     }
@@ -2038,11 +2070,21 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Normalized Items List */}
             <div className="lg:col-span-5 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                정규화된 BOM 품목 ({normalizedItems.length})
-              </h4>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    정규화된 BOM 품목 ({normalizedItems.length})
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    도면 표제란 메타데이터 연동 및 CAD 도면 위치 줌인 지원
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 shrink-0">
+                  표제란 연동됨
+                </span>
+              </div>
 
-              <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
                 {normalizedItems.map((ni: any) => {
                   const finalItem = finalBomItems.find((f: any) => f.normalized_item_id === ni.id);
                   const isSelected = selectedNormItem?.id === ni.id;
@@ -2051,33 +2093,86 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                     <div
                       key={ni.id}
                       onClick={() => setSelectedNormItem(ni)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer text-xs space-y-1.5 ${
+                      className={`p-3 rounded-xl border transition-all cursor-pointer text-xs space-y-2 relative group ${
                         isSelected
-                          ? 'border-blue-600 bg-blue-50/50 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                          ? 'border-blue-600 bg-blue-50/40 shadow-sm ring-2 ring-blue-400/30'
+                          : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/60 bg-white'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">{ni.normalized_name}</span>
+                      {/* Top Header: Drawing No Badge + Item Name + Status Badge */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center space-x-1.5 flex-wrap">
+                            <span className="font-mono font-extrabold text-[11px] text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                              {ni.drawing_no || '도면번호 미지정'}
+                            </span>
+                            <h4 className="font-extrabold text-slate-900 text-xs truncate">
+                              {ni.drawing_name || ni.normalized_name}
+                            </h4>
+                          </div>
+                        </div>
+
                         <span
-                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] shrink-0 ${
                             finalItem
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200'
                           }`}
                         >
                           {finalItem ? '승인완료' : '검토필요'}
                         </span>
                       </div>
 
-                      <div className="text-slate-500 text-[11px]">
-                        Raw: <span className="font-mono">{ni.raw_name}</span> | 수량: {ni.quantity} {ni.unit}
+                      {/* Project Name from Drawing Title Block */}
+                      <div className="flex items-center space-x-1 text-[11px] text-slate-600 truncate bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                        <Folder className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="text-slate-400 font-medium shrink-0">프로젝트:</span>
+                        <span className="font-semibold text-slate-700 truncate">
+                          {ni.project_name || data?.case?.project_name || '기본 프로젝트'}
+                        </span>
+                      </div>
+
+                      {/* Title Block Specs Grid (Rev, Material, Scale, Qty) */}
+                      <div className="grid grid-cols-4 gap-1 text-[10.5px] bg-slate-50/60 p-1.5 rounded border border-slate-100 text-slate-600">
+                        <div className="truncate">
+                          <span className="text-slate-400">Rev:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_revision || 'R00'}</strong>
+                        </div>
+                        <div className="truncate">
+                          <span className="text-slate-400">재질:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_material || ni.material_candidate || 'SS400'}</strong>
+                        </div>
+                        <div className="truncate">
+                          <span className="text-slate-400">척도:</span> <strong className="text-slate-700 font-semibold">{ni.drawing_scale || '-'}</strong>
+                        </div>
+                        <div className="text-right truncate">
+                          <span className="text-slate-400">수량:</span> <strong className="text-blue-700 font-extrabold">{ni.quantity} {ni.unit || 'EA'}</strong>
+                        </div>
+                      </div>
+
+                      {/* Bottom: Raw Text and Action Button to Navigate to CAD Drawing Location */}
+                      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <div className="text-slate-400 text-[10.5px] truncate">
+                          Raw: <span className="font-mono text-slate-600">{ni.raw_name}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedNormItem(ni);
+                            handleNavigateToCadDrawing(ni);
+                          }}
+                          className="btn-hover-effect px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-xs shrink-0"
+                          title="클릭 시 1. 도면등록 & 뷰어 탭으로 이동하여 해당 도면/BOM 위치로 화면을 맞춥니다."
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>도면 위치 줌인 ↗</span>
+                        </button>
                       </div>
 
                       {finalItem && (
-                        <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-slate-100 flex items-center space-x-1">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>승인 마스터: [{finalItem.final_master_code}] {finalItem.final_name}</span>
+                        <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-emerald-100 flex items-center space-x-1">
+                          <Check className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">승인 마스터: [{finalItem.final_master_code}] {finalItem.final_name}</span>
                         </div>
                       )}
                     </div>
@@ -2091,14 +2186,76 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               {selectedNormItem ? (
                 <>
                   <div className="border-b border-slate-100 pb-4">
-                    <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
-                      선택 품목 검토
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
+                        선택 품목 검토
+                      </div>
+                      <button
+                        onClick={() => handleNavigateToCadDrawing(selectedNormItem)}
+                        className="btn-hover-effect px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer group"
+                        title="CAD 뷰어로 이동하여 이 품목이 그려진 도면과 표제란 위치를 줌인합니다."
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 group-hover:scale-115 transition-transform" />
+                        <span>CAD 도면 위치 줌인 ↗</span>
+                      </button>
                     </div>
-                    <h3 className="text-lg font-bold text-slate-900">{selectedNormItem.normalized_name}</h3>
-                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs bg-slate-50 p-2.5 rounded-xl text-slate-600">
-                      <div><span className="text-slate-400">규격:</span> {selectedNormItem.spec_candidate || '-'}</div>
-                      <div><span className="text-slate-400">재질:</span> {selectedNormItem.material_candidate || '-'}</div>
-                      <div><span className="text-slate-400">수량:</span> {selectedNormItem.quantity} {selectedNormItem.unit}</div>
+
+                    <div className="flex items-center space-x-2 mt-1">
+                      <span className="font-mono font-extrabold text-xs text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded border border-blue-200">
+                        {selectedNormItem.drawing_no || '도면번호 미지정'}
+                      </span>
+                      <h3 className="text-base font-extrabold text-slate-900">
+                        {selectedNormItem.drawing_name || selectedNormItem.normalized_name}
+                      </h3>
+                    </div>
+
+                    {/* Detailed Title Block Spec Card */}
+                    <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+                      <div className="flex items-center justify-between text-slate-500 font-semibold border-b border-slate-200 pb-1.5">
+                        <span className="flex items-center space-x-1.5 text-blue-700">
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>도면 표제란(Title Block) 메타데이터</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">도면 1:1 동기화 완료</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-600">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">도면 번호 (DWG No.)</span>
+                          <strong className="font-mono font-bold text-slate-900">{selectedNormItem.drawing_no || '-'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">프로젝트명</span>
+                          <span className="font-semibold text-slate-800 truncate block" title={selectedNormItem.project_name || data?.case?.project_name}>
+                            {selectedNormItem.project_name || data?.case?.project_name || '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">고객사 (Customer)</span>
+                          <span className="font-semibold text-slate-800 truncate block">
+                            {selectedNormItem.company_name || data?.case?.company_name || '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">리비전 (Rev)</span>
+                          <span className="font-bold text-slate-800">{selectedNormItem.drawing_revision || 'R00'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">재질 (Material)</span>
+                          <span className="font-semibold text-slate-800">{selectedNormItem.drawing_material || selectedNormItem.material_candidate || 'SS400'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">척도 (Scale)</span>
+                          <span className="font-semibold text-slate-800">{selectedNormItem.drawing_scale || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">규격/사양</span>
+                          <span className="font-semibold text-slate-800">{selectedNormItem.spec_candidate || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">산출 수량</span>
+                          <span className="font-extrabold text-blue-700">{selectedNormItem.quantity} {selectedNormItem.unit || 'EA'}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

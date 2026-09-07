@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import {
@@ -99,26 +99,27 @@ export default function CaseWorkflowSidebar({
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
-          className={`rounded-lg border-2 transition-all p-3 space-y-2.5 ${
+          className={`rounded-lg border-[3px] transition-all p-3 space-y-2.5 ${
             isDragging
-              ? 'border-blue-600 bg-blue-50/90 shadow-md scale-[1.01]'
-              : 'border-dashed border-blue-300 bg-gradient-to-b from-blue-50/50 via-white to-slate-50/60 hover:border-blue-500 hover:shadow-xs'
+              ? 'border-blue-600 bg-blue-50/90 shadow-lg scale-[1.01] ring-4 ring-blue-500/20'
+              : 'border-blue-500 bg-gradient-to-b from-blue-50/60 via-white to-white shadow-xs hover:border-blue-600 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5">
-              <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-extrabold flex items-center justify-center">
+              <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-extrabold flex items-center justify-center shadow-2xs">
                 1
               </span>
               <span className="text-xs font-extrabold text-slate-900">도면 접수 & 등록</span>
             </div>
-            <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">
-              원스톱 쾌속 시작
+            <span className="text-[10px] font-bold text-blue-800 bg-blue-100/90 px-2 py-0.5 rounded-full border border-blue-200 flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+              <span>원스톱 쾌속 시작</span>
             </span>
           </div>
 
           {/* Visual Drag & Drop Target Area */}
-          <div className="py-3 px-2 bg-white/80 rounded border border-blue-100 flex flex-col items-center justify-center text-center space-y-1.5 shadow-2xs">
+          <div className="py-3 px-2 bg-white/90 rounded border border-dashed border-blue-200 flex flex-col items-center justify-center text-center space-y-1.5 shadow-2xs">
             <div className="w-11 h-11 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
               <UploadCloud className="w-6 h-6" />
             </div>

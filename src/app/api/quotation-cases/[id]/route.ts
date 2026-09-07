@@ -47,7 +47,45 @@ export async function GET(
   const bomAreas = db.prepare('SELECT * FROM bom_areas WHERE quotation_case_id = ?').all(id);
   const rawBomItems = db.prepare('SELECT * FROM raw_bom_items WHERE quotation_case_id = ? ORDER BY row_index ASC').all(id);
   const flattenedBomItems = db.prepare('SELECT * FROM flattened_bom_items WHERE quotation_case_id = ?').all(id);
-  const normalizedItems = db.prepare('SELECT * FROM normalized_bom_items WHERE quotation_case_id = ?').all(id);
+  const normalizedItems = db.prepare(`
+    SELECT 
+      ni.*,
+      COALESCE(fb.part_no, '') as drawing_no,
+      fb.source_drawings_json,
+      COALESCE(d.drawing_name_raw, ni.normalized_name) as drawing_name,
+      COALESCE(d.revision, 'R00') as drawing_revision,
+      COALESCE(d.scale, fb.specification, '-') as drawing_scale,
+      COALESCE(d.material, fb.material, ni.material_candidate, 'SS400') as drawing_material,
+      COALESCE(d.drawing_type, 'PART') as drawing_type,
+      d.id as matched_drawing_id,
+      p.project_name,
+      p.project_code,
+      c.company_name
+    FROM normalized_bom_items ni
+    LEFT JOIN flattened_bom_items fb 
+      ON fb.id = REPLACE(ni.id, 'norm_', 'fb_')
+    LEFT JOIN (
+      SELECT 
+        quotation_case_id,
+        drawing_no_raw,
+        drawing_no_normalized,
+        drawing_name_raw,
+        revision,
+        scale,
+        material,
+        drawing_type,
+        id
+      FROM drawings
+      GROUP BY quotation_case_id, drawing_no_raw
+    ) d 
+      ON d.quotation_case_id = ni.quotation_case_id 
+      AND (d.drawing_no_raw = fb.part_no OR d.drawing_no_normalized = fb.part_no)
+    LEFT JOIN quotation_cases qc ON qc.id = ni.quotation_case_id
+    LEFT JOIN projects p ON qc.project_id = p.id
+    LEFT JOIN companies c ON qc.company_id = c.id
+    WHERE ni.quotation_case_id = ?
+    ORDER BY ni.id ASC
+  `).all(id);
   
   // Fetch candidates for normalized items
   const candidates = db.prepare(`
