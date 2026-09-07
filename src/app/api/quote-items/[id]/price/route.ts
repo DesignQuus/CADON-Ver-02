@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { recordActivity } from '@/lib/audit';
+import { checkCasePermission } from '@/lib/permissions';
 
 export async function PATCH(
   req: NextRequest,
@@ -21,6 +22,16 @@ export async function PATCH(
   const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(item.quote_id) as any;
   if (quote.is_locked) {
     return NextResponse.json({ error: '승인 완료되어 잠긴 견적서는 직접 수정할 수 없습니다. 새 버전을 생성해주세요.' }, { status: 400 });
+  }
+
+  // Permission Guard
+  const perm = checkCasePermission(session.userId, session.role, quote.quotation_case_id);
+  if (!perm.canEdit) {
+    return NextResponse.json({
+      error: perm.message || '해당 견적건의 단가를 수정할 권한이 없습니다. 최고관리자의 승인이 필요합니다.',
+      requiresApproval: perm.requiresApproval,
+      approvalStatus: perm.approvalStatus
+    }, { status: 403 });
   }
 
   try {

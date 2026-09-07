@@ -533,7 +533,51 @@ export function initializeDatabase() {
       created_at TEXT NOT NULL
     );
 
+    -- 17. Approval & Permission Settings (최고관리자 승인권한 설정 및 결재 관리)
+    CREATE TABLE IF NOT EXISTS system_approval_settings (
+      id TEXT PRIMARY KEY,
+      cross_user_edit_policy TEXT NOT NULL DEFAULT 'REQUIRE_APPROVAL', -- 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY'
+      cross_user_approve_policy TEXT NOT NULL DEFAULT 'REQUIRE_APPROVAL',
+      require_admin_final_quote_approval INTEGER NOT NULL DEFAULT 0,
+      approval_valid_hours INTEGER NOT NULL DEFAULT 48,
+      updated_by_user_id TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS user_approval_permissions (
+      user_id TEXT PRIMARY KEY,
+      can_edit_own INTEGER NOT NULL DEFAULT 1,
+      can_approve_own INTEGER NOT NULL DEFAULT 1,
+      can_edit_others TEXT NOT NULL DEFAULT 'REQUIRE_APPROVAL', -- 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY'
+      can_approve_others TEXT NOT NULL DEFAULT 'REQUIRE_APPROVAL',
+      can_edit_price INTEGER NOT NULL DEFAULT 1,
+      can_approve_quote INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS approval_requests (
+      id TEXT PRIMARY KEY,
+      request_type TEXT NOT NULL DEFAULT 'EDIT_CASE', -- 'EDIT_CASE' | 'APPROVE_BOM' | 'APPROVE_QUOTE'
+      quotation_case_id TEXT NOT NULL,
+      requester_user_id TEXT NOT NULL,
+      owner_user_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING', -- 'PENDING' | 'APPROVED' | 'REJECTED'
+      reviewed_by_user_id TEXT,
+      reviewed_at TEXT,
+      review_comment TEXT,
+      created_at TEXT NOT NULL,
+      expires_at TEXT,
+      FOREIGN KEY (quotation_case_id) REFERENCES quotation_cases(id) ON DELETE CASCADE,
+      FOREIGN KEY (requester_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     -- Performance Indexes
+    CREATE INDEX IF NOT EXISTS idx_approval_requests_case ON approval_requests(quotation_case_id);
+    CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_approval_requests_requester ON approval_requests(requester_user_id);
     CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON user_activity_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON user_activity_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_logs_type ON user_activity_logs(activity_type);
@@ -598,6 +642,32 @@ export function initializeDatabase() {
       INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
       VALUES ('usr_admin', ?, 'MANAGER', 1)
     `).run(compId);
+  }
+
+  // Seed Global Approval Settings
+  db.prepare(`
+    INSERT INTO system_approval_settings (
+      id, cross_user_edit_policy, cross_user_approve_policy,
+      require_admin_final_quote_approval, approval_valid_hours, updated_by_user_id, updated_at
+    ) VALUES ('GLOBAL_CONFIG', 'REQUIRE_APPROVAL', 'REQUIRE_APPROVAL', 0, 48, 'usr_admin', ?)
+    ON CONFLICT(id) DO NOTHING
+  `).run(now);
+
+  // Seed default permissions for 5 managers + admin
+  const allUsers = [...demoUsers, { id: 'usr_admin', name: '시스템 최고관리자' }];
+  for (const u of allUsers) {
+    const isSuperAdmin = u.id === 'usr_admin';
+    db.prepare(`
+      INSERT INTO user_approval_permissions (
+        user_id, can_edit_own, can_approve_own, can_edit_others, can_approve_others, can_edit_price, can_approve_quote, updated_at
+      ) VALUES (?, 1, 1, ?, ?, 1, 1, ?)
+      ON CONFLICT(user_id) DO NOTHING
+    `).run(
+      u.id,
+      isSuperAdmin ? 'ALLOW' : 'REQUIRE_APPROVAL',
+      isSuperAdmin ? 'ALLOW' : 'REQUIRE_APPROVAL',
+      now
+    );
   }
 
   // Seed default data if companies table is empty

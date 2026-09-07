@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { checkCasePermission } from '@/lib/permissions';
 
 export async function POST(
   req: NextRequest,
@@ -15,6 +16,16 @@ export async function POST(
   const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(id) as any;
   if (!quote) {
     return NextResponse.json({ error: '견적서를 찾을 수 없습니다.' }, { status: 404 });
+  }
+
+  // Permission Guard
+  const perm = checkCasePermission(session.userId, session.role, quote.quotation_case_id);
+  if (!perm.canApprove) {
+    return NextResponse.json({
+      error: perm.message || '해당 견적서 승인 권한이 없습니다. 최고관리자의 승인이 필요합니다.',
+      requiresApproval: perm.requiresApproval,
+      approvalStatus: perm.approvalStatus
+    }, { status: 403 });
   }
 
   // Check if all items have valid prices

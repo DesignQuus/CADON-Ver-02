@@ -3,17 +3,30 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Layers, FileText, CheckCircle2, ShieldAlert, ShieldCheck, LogOut, UserCheck } from 'lucide-react';
+import { Layers, FileText, CheckCircle2, ShieldAlert, ShieldCheck, LogOut, UserCheck, Sliders } from 'lucide-react';
 
 export default function Navigation() {
   const [user, setUser] = useState<any>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : { user: null }))
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        setUser(data.user);
+        if (data.user) {
+          fetch('/api/admin/permissions')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((pData) => {
+              if (pData?.pendingCount !== undefined) {
+                setPendingCount(pData.pendingCount);
+              }
+            })
+            .catch(() => {});
+        }
+      })
       .catch(() => setUser(null));
   }, [pathname]);
 
@@ -76,6 +89,22 @@ export default function Navigation() {
             >
               <ShieldCheck className="w-4 h-4 text-blue-600" />
               <span>사용자 활동 로그</span>
+            </Link>
+            <Link
+              href="/admin/permissions"
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+                pathname.startsWith('/admin/permissions')
+                  ? 'bg-blue-50 text-blue-700 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <Sliders className="w-4 h-4 text-purple-600" />
+              <span>승인권한 설정</span>
+              {pendingCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] font-black rounded-full bg-amber-500 text-white animate-pulse">
+                  {pendingCount}
+                </span>
+              )}
             </Link>
           </nav>
         </div>

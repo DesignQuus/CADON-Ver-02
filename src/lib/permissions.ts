@@ -1,0 +1,259 @@
+import { db } from './db';
+import { UserSession } from './auth';
+
+export interface SystemApprovalSettings {
+  id: string;
+  cross_user_edit_policy: 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY';
+  cross_user_approve_policy: 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY';
+  require_admin_final_quote_approval: number;
+  approval_valid_hours: number;
+  updated_by_user_id?: string;
+  updated_at: string;
+}
+
+export interface UserApprovalPermission {
+  user_id: string;
+  user_name?: string;
+  user_login_id?: string;
+  user_role?: string;
+  can_edit_own: number;
+  can_approve_own: number;
+  can_edit_others: 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY';
+  can_approve_others: 'REQUIRE_APPROVAL' | 'ALLOW' | 'DENY';
+  can_edit_price: number;
+  can_approve_quote: number;
+  updated_at: string;
+}
+
+export interface CasePermissionResult {
+  canEdit: boolean;
+  canApprove: boolean;
+  isOwner: boolean;
+  isSuperAdmin: boolean;
+  ownerUserId: string;
+  ownerName: string;
+  requiresApproval: boolean;
+  approvalStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  activeRequestId?: string;
+  requestedAt?: string;
+  reviewComment?: string;
+  message?: string;
+}
+
+export function getSystemApprovalSettings(): SystemApprovalSettings {
+  const row = db.prepare(`
+    SELECT * FROM system_approval_settings WHERE id = 'GLOBAL_CONFIG'
+  `).get() as SystemApprovalSettings | undefined;
+
+  if (row) return row;
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO system_approval_settings (
+      id, cross_user_edit_policy, cross_user_approve_policy,
+      require_admin_final_quote_approval, approval_valid_hours, updated_at
+    ) VALUES ('GLOBAL_CONFIG', 'REQUIRE_APPROVAL', 'REQUIRE_APPROVAL', 0, 48, ?)
+  `).run(now);
+
+  return {
+    id: 'GLOBAL_CONFIG',
+    cross_user_edit_policy: 'REQUIRE_APPROVAL',
+    cross_user_approve_policy: 'REQUIRE_APPROVAL',
+    require_admin_final_quote_approval: 0,
+    approval_valid_hours: 48,
+    updated_at: now
+  };
+}
+
+export function getUserApprovalPermissions(userId: string): UserApprovalPermission | null {
+  const row = db.prepare(`
+    SELECT uap.*, u.name as user_name, u.login_id as user_login_id, u.role as user_role
+    FROM user_approval_permissions uap
+    JOIN users u ON uap.user_id = u.id
+    WHERE uap.user_id = ?
+  `).get(userId) as UserApprovalPermission | undefined;
+
+  return row || null;
+}
+
+export function getAllUserApprovalPermissions(): UserApprovalPermission[] {
+  return db.prepare(`
+    SELECT uap.*, u.name as user_name, u.login_id as user_login_id, u.role as user_role
+    FROM user_approval_permissions uap
+    JOIN users u ON uap.user_id = u.id
+    WHERE u.is_active = 1
+    ORDER BY CASE WHEN u.role = 'SUPER_ADMIN' THEN 0 ELSE 1 END, u.name ASC
+  `).all() as UserApprovalPermission[];
+}
+
+export function checkCasePermission(
+  userId: string,
+  userRole: string,
+  quotationCaseId: string
+): CasePermissionResult {
+  const qc = db.prepare(`
+    SELECT qc.id, qc.case_no, qc.case_name, qc.created_by_user_id, u.name as owner_name
+    FROM quotation_cases qc
+    LEFT JOIN users u ON qc.created_by_user_id = u.id
+    WHERE qc.id = ?
+  `).get(quotationCaseId) as { id: string; case_no: string; case_name: string; created_by_user_id: string; owner_name: string } | undefined;
+
+  if (!qc) {
+    return {
+      canEdit: false,
+      canApprove: false,
+      isOwner: false,
+      isSuperAdmin: userRole === 'SUPER_ADMIN',
+      ownerUserId: '',
+      ownerName: '알 수 없음',
+      requiresApproval: false,
+      approvalStatus: 'NONE',
+      message: '견적건을 찾을 수 없습니다.'
+    };
+  }
+
+  const ownerUserId = qc.created_by_user_id;
+  const ownerName = qc.owner_name || '담당자';
+
+  // 1. 최고관리자 (SUPER_ADMIN)는 모든 권한 보유
+  if (userRole === 'SUPER_ADMIN') {
+    return {
+      canEdit: true,
+      canApprove: true,
+      isOwner: ownerUserId === userId,
+      isSuperAdmin: true,
+      ownerUserId,
+      ownerName,
+      requiresApproval: false,
+      approvalStatus: 'APPROVED',
+      message: '최고관리자 권한으로 모든 작업을 수행할 수 있습니다.'
+    };
+  }
+
+  // 2. 본인이 담당한 견적건인 경우 -> 자유 수정 및 승인 가능
+  if (ownerUserId === userId) {
+    const userPerm = getUserApprovalPermissions(userId);
+    const canEdit = userPerm ? Boolean(userPerm.can_edit_own) : true;
+    const canApprove = userPerm ? Boolean(userPerm.can_approve_own) : true;
+
+    return {
+      canEdit,
+      canApprove,
+      isOwner: true,
+      isSuperAdmin: false,
+      ownerUserId,
+      ownerName,
+      requiresApproval: false,
+      approvalStatus: 'NONE',
+      message: '본인이 등록한 견적건으로 자유롭게 수정 및 승인할 수 있습니다.'
+    };
+  }
+
+  // 3. 다른 담당자의 견적건인 경우 (Cross-User Case)
+  const settings = getSystemApprovalSettings();
+  const userPerm = getUserApprovalPermissions(userId);
+
+  // 최고관리자 설정이 'ALLOW'이고 사용자 권한도 'ALLOW'인 경우 자유 수정
+  if (settings.cross_user_edit_policy === 'ALLOW' && (!userPerm || userPerm.can_edit_others === 'ALLOW')) {
+    return {
+      canEdit: true,
+      canApprove: true,
+      isOwner: false,
+      isSuperAdmin: false,
+      ownerUserId,
+      ownerName,
+      requiresApproval: false,
+      approvalStatus: 'APPROVED',
+      message: '전역 협업 정책에 의해 타 담당자의 견적건 수정이 허용되었습니다.'
+    };
+  }
+
+  // 최고관리자 설정 또는 사용자 권한이 'DENY'인 경우 완전 차단
+  if (settings.cross_user_edit_policy === 'DENY' || userPerm?.can_edit_others === 'DENY') {
+    return {
+      canEdit: false,
+      canApprove: false,
+      isOwner: false,
+      isSuperAdmin: false,
+      ownerUserId,
+      ownerName,
+      requiresApproval: false,
+      approvalStatus: 'NONE',
+      message: '최고관리자 정책에 의해 타 담당자의 견적건 수정이 금지되어 있습니다.'
+    };
+  }
+
+  // 기본값: 'REQUIRE_APPROVAL' -> 최고관리자의 승인 여부 조회
+  const activeReq = db.prepare(`
+    SELECT * FROM approval_requests
+    WHERE quotation_case_id = ? AND requester_user_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(quotationCaseId, userId) as {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    created_at: string;
+    review_comment?: string;
+  } | undefined;
+
+  if (activeReq) {
+    if (activeReq.status === 'APPROVED') {
+      return {
+        canEdit: true,
+        canApprove: true,
+        isOwner: false,
+        isSuperAdmin: false,
+        ownerUserId,
+        ownerName,
+        requiresApproval: true,
+        approvalStatus: 'APPROVED',
+        activeRequestId: activeReq.id,
+        requestedAt: activeReq.created_at,
+        reviewComment: activeReq.review_comment,
+        message: '최고관리자의 승인이 완료되어 타 담당자의 견적건을 수정 및 승인할 수 있습니다.'
+      };
+    } else if (activeReq.status === 'PENDING') {
+      return {
+        canEdit: false,
+        canApprove: false,
+        isOwner: false,
+        isSuperAdmin: false,
+        ownerUserId,
+        ownerName,
+        requiresApproval: true,
+        approvalStatus: 'PENDING',
+        activeRequestId: activeReq.id,
+        requestedAt: activeReq.created_at,
+        message: '최고관리자에게 수정/승인 권한 승인을 요청한 상태입니다. (결재 대기 중)'
+      };
+    } else if (activeReq.status === 'REJECTED') {
+      return {
+        canEdit: false,
+        canApprove: false,
+        isOwner: false,
+        isSuperAdmin: false,
+        ownerUserId,
+        ownerName,
+        requiresApproval: true,
+        approvalStatus: 'REJECTED',
+        activeRequestId: activeReq.id,
+        requestedAt: activeReq.created_at,
+        reviewComment: activeReq.review_comment,
+        message: '최고관리자에 의해 수정 권한 요청이 반려되었습니다.'
+      };
+    }
+  }
+
+  // 아직 승인 요청을 하지 않은 상태
+  return {
+    canEdit: false,
+    canApprove: false,
+    isOwner: false,
+    isSuperAdmin: false,
+    ownerUserId,
+    ownerName,
+    requiresApproval: true,
+    approvalStatus: 'NONE',
+    message: `타 담당자(${ownerName})의 견적건입니다. 수정 및 승인을 진행하려면 최고관리자의 승인이 필요합니다.`
+  };
+}

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { getStorageSubdir } from '@/lib/storage';
+import { resolveStoragePath, getStorageSubdir } from '@/lib/storage';
+import { checkCasePermission } from '@/lib/permissions';
 import fs from 'fs';
 import path from 'path';
 
@@ -162,8 +163,11 @@ export async function GET(
     `).all(latestParseRun.id);
   }
 
+  const permission = checkCasePermission(session.userId, session.role, id);
+
   return NextResponse.json({
     case: qc,
+    permission,
     files,
     drawings,
     relationships,
