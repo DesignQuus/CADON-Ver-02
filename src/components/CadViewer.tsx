@@ -1973,9 +1973,9 @@ export default function CadViewer({
               </div>
             </div>
 
-            <div className="text-[11px] text-emerald-400 flex items-center space-x-1">
-              <Check className="w-3.5 h-3.5" />
-              <span>행의 [도면 보기] 클릭 시 웹 도면으로 꽉 차게 이동 / [무료뷰어 연결] 클릭 시 PC 무료 뷰어 실행</span>
+            <div className="text-[11px] text-emerald-400 flex items-center space-x-1.5">
+              <Check className="w-3.5 h-3.5 shrink-0" />
+              <span>💡 행을 클릭(또는 더블클릭)하면 해당 도면 위치로 줌인됩니다. (전체 도면을 PC 뷰어로 열려면 상단의 [무료뷰어 연결] 버튼을 이용하세요)</span>
             </div>
           </div>
 
@@ -1996,7 +1996,7 @@ export default function CadViewer({
                     </div>
                   </th>
                   <th className="py-2.5 px-3 w-48 border-r border-slate-800">도면 구분 (계층 구조)</th>
-                  <th className="py-2.5 px-3 w-40 text-center border-r border-slate-800">CAD 연동 액션</th>
+                  <th className="py-2.5 px-2 w-24 text-center border-r border-slate-800">도면 위치</th>
                   <th className="py-2.5 px-3 w-36 border-r border-slate-800">도면 번호 (DWG. No.)</th>
                   <th className="py-2.5 px-3 w-44 max-w-[170px] border-r border-slate-800">Sub Name (품명)</th>
                   <th className="py-2.5 px-2.5 w-28 text-right border-r border-slate-800">
@@ -2035,7 +2035,10 @@ export default function CadViewer({
                     return (
                       <tr
                         key={d.id || i}
-                        className={`transition-colors duration-100 ${
+                        onClick={() => handleZoomToRow(d)}
+                        onDoubleClick={() => handleZoomToRow(d)}
+                        title="클릭 시 웹 CAD 화면에서 이 도면 위치로 줌인합니다."
+                        className={`transition-colors duration-100 cursor-pointer ${
                           !info.isIncluded
                             ? 'opacity-40 bg-slate-950/70 hover:opacity-80 text-slate-500'
                             : isMain
@@ -2051,7 +2054,11 @@ export default function CadViewer({
                         </td>
 
                         {/* 💎 견적 체크박스 (Tri-State 지원) */}
-                        <td className="py-2 px-2 text-center border-r border-slate-800/70">
+                        <td 
+                          className="py-2 px-2 text-center border-r border-slate-800/70"
+                          onClick={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                        >
                           <div className="flex items-center justify-center">
                             <TriStateCheckbox
                               state={info.checkState}
@@ -2111,27 +2118,19 @@ export default function CadViewer({
                           </div>
                         </td>
 
-                        {/* CAD 연동 액션 (웹 도면 전체 보기 + PC 무료 CAD 뷰어) */}
-                        <td className="py-1.5 px-3 text-center border-r border-slate-800/70">
-                          <div className="flex items-center justify-center space-x-1.5 font-sans">
-                            <button
-                              onClick={() => handleZoomToRow(d)}
-                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10.5px] font-bold flex items-center space-x-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
-                              title="웹 CAD 화면에서 이 도면 전체를 화면에 꽉 차게 보기"
-                            >
-                              <Search className="w-3 h-3" />
-                              <span>도면 보기</span>
-                            </button>
-                            {caseId && (
-                              <button
-                                onClick={handleOpenFreeViewer}
-                                className="px-2 py-1 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-[10.5px] font-medium flex items-center space-x-0.5 cursor-pointer transition-colors whitespace-nowrap shadow-2xs"
-                                title="이 도면을 PC에 설치된 무료 CAD 뷰어(FastView, TrueView 등)로 즉시 열기"
-                              >
-                                <span>무료뷰어 연결</span>
-                              </button>
-                            )}
-                          </div>
+                        {/* 도면 위치 액션 */}
+                        <td className="py-1.5 px-2 text-center border-r border-slate-800/70">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleZoomToRow(d);
+                            }}
+                            className="btn-hover-effect px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10.5px] font-bold inline-flex items-center space-x-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
+                            title="웹 CAD 화면에서 이 도면 전체를 화면에 꽉 차게 보기"
+                          >
+                            <Search className="w-3 h-3" />
+                            <span>도면 보기</span>
+                          </button>
                         </td>
 
                         {/* DWG No */}
