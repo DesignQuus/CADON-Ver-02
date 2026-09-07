@@ -12,14 +12,14 @@ import {
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
 
-// --- Team Activity Mock Data & Component ---
+// --- Team Activity Component ---
 const TEAM_MEMBERS = [
-  { id: 'admin', name: '최고관리자', role: '시스템 운영', avatar: '👑', color: 'bg-amber-100 text-amber-700 border-amber-300', lastLogin: '방금 전', processed: 124, projects: 12 },
-  { id: 'est1', name: '최견적', role: '견적 담당', avatar: '👨‍💼', color: 'bg-blue-100 text-blue-700 border-blue-300', lastLogin: '10분 전', processed: 45, projects: 5 },
-  { id: 'est2', name: '이견적', role: '견적 담당', avatar: '👩‍💼', color: 'bg-emerald-100 text-emerald-700 border-emerald-300', lastLogin: '1시간 전', processed: 38, projects: 4 },
-  { id: 'est3', name: '김견적', role: '견적 담당', avatar: '👨‍💻', color: 'bg-purple-100 text-purple-700 border-purple-300', lastLogin: '3시간 전', processed: 52, projects: 7 },
-  { id: 'est4', name: '송견적', role: '견적 담당', avatar: '👩‍💻', color: 'bg-pink-100 text-pink-700 border-pink-300', lastLogin: '어제', processed: 29, projects: 2 },
-  { id: 'est5', name: '박견적', role: '견적 담당', avatar: '🧑‍💻', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', lastLogin: '2일 전', processed: 15, projects: 1 },
+  { id: 'usr_admin', name: '시스템 최고관리자', role: '시스템 총괄', avatar: '👑', color: 'bg-amber-100 text-amber-700 border-amber-300', lastLogin: '방금 전', processed: 15, projects: 5 },
+  { id: 'usr_kim', name: '김견적 과장', role: '영업견적 1팀', avatar: '👨‍💻', color: 'bg-blue-100 text-blue-700 border-blue-300', lastLogin: '10분 전', processed: 3, projects: 1 },
+  { id: 'usr_lee', name: '이견적 대리', role: '영업견적 1팀', avatar: '👩‍💼', color: 'bg-emerald-100 text-emerald-700 border-emerald-300', lastLogin: '30분 전', processed: 3, projects: 1 },
+  { id: 'usr_choi', name: '최견적 차장', role: '기술견적 2팀', avatar: '👨‍💼', color: 'bg-purple-100 text-purple-700 border-purple-300', lastLogin: '1시간 전', processed: 3, projects: 1 },
+  { id: 'usr_song', name: '송견적 주임', role: '기술견적 2팀', avatar: '👩‍💻', color: 'bg-pink-100 text-pink-700 border-pink-300', lastLogin: '2시간 전', processed: 3, projects: 1 },
+  { id: 'usr_park', name: '박견적 대리', role: '정밀견적 3팀', avatar: '🧑‍💻', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', lastLogin: '어제', processed: 3, projects: 1 },
 ];
 
 function TeamActivityAccordion() {

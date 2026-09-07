@@ -555,11 +555,11 @@ export function initializeDatabase() {
   const adminPassHash = bcrypt.hashSync('Cadon1234!@', 10);
 
   const demoUsers = [
-    { id: 'usr_kim', login_id: 'kim', name: '김견적', role: 'SALES_USER' },
-    { id: 'usr_lee', login_id: 'lee', name: '이견적', role: 'SALES_USER' },
-    { id: 'usr_choi', login_id: 'choi', name: '최견적', role: 'SALES_USER' },
-    { id: 'usr_song', login_id: 'song', name: '송견적', role: 'SALES_USER' },
-    { id: 'usr_park', login_id: 'park', name: '박견적', role: 'SALES_USER' },
+    { id: 'usr_kim', login_id: 'kim', name: '김견적 과장', role: 'SALES_USER' },
+    { id: 'usr_lee', login_id: 'lee', name: '이견적 대리', role: 'SALES_USER' },
+    { id: 'usr_choi', login_id: 'choi', name: '최견적 차장', role: 'SALES_USER' },
+    { id: 'usr_song', login_id: 'song', name: '송견적 주임', role: 'SALES_USER' },
+    { id: 'usr_park', login_id: 'park', name: '박견적 대리', role: 'SALES_USER' },
   ];
 
   for (const u of demoUsers) {
@@ -573,15 +573,13 @@ export function initializeDatabase() {
         is_active = 1
     `).run(u.id, u.login_id, defaultPassHash, u.name, u.role, now, now);
 
-    // Grant company access to demo customer companies
-    db.prepare(`
-      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
-      VALUES (?, 'comp_001', 'MANAGER', 1)
-    `).run(u.id);
-    db.prepare(`
-      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
-      VALUES (?, 'comp_002', 'MANAGER', 1)
-    `).run(u.id);
+    // Grant company access to all customer companies
+    for (const compId of ['comp_001', 'comp_002', 'comp_003', 'comp_004']) {
+      db.prepare(`
+        INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
+        VALUES (?, ?, 'MANAGER', 1)
+      `).run(u.id, compId);
+    }
   }
 
   // Admin user
@@ -594,6 +592,13 @@ export function initializeDatabase() {
       role = excluded.role,
       is_active = 1
   `).run('usr_admin', 'admin', adminPassHash, '시스템 최고관리자', 'SUPER_ADMIN', now, now);
+
+  for (const compId of ['comp_001', 'comp_002', 'comp_003', 'comp_004']) {
+    db.prepare(`
+      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
+      VALUES ('usr_admin', ?, 'MANAGER', 1)
+    `).run(compId);
+  }
 
   // Seed default data if companies table is empty
   const companyCount = db.prepare('SELECT COUNT(*) as cnt FROM companies').get() as { cnt: number };

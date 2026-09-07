@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { recordActivity } from '@/lib/audit';
@@ -25,39 +25,54 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (targetCase.created_by_user_id !== session.userId && session.role !== 'SUPER_ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      db.prepare(
+      db.prepare(`
         UPDATE quotation_cases 
         SET visibility = 'PRIVATE_PENDING', visibility_reason = ?, updated_at = ?
         WHERE id = ?
-      ).run(reason || null, now, id);
+      `).run(reason || null, now, id);
 
-      recordActivity(session.userId, 'UPDATE', 'quotation_cases', id, \Requested PRIVATE visibility. Reason: \\);
+      await recordActivity(req, session, {
+        activityType: 'VISIBILITY_CHANGE',
+        quotationCaseId: id,
+        caseName: targetCase.case_name,
+        details: `Requested PRIVATE visibility. Reason: ${reason || 'N/A'}`
+      });
       return NextResponse.json({ success: true, visibility: 'PRIVATE_PENDING' });
 
     } else if (action === 'APPROVE') {
       if (session.role !== 'SUPER_ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      db.prepare(
+      db.prepare(`
         UPDATE quotation_cases 
         SET visibility = 'PRIVATE', updated_at = ?
         WHERE id = ?
-      ).run(now, id);
+      `).run(now, id);
 
-      recordActivity(session.userId, 'UPDATE', 'quotation_cases', id, 'Approved PRIVATE visibility request.');
+      await recordActivity(req, session, {
+        activityType: 'VISIBILITY_CHANGE',
+        quotationCaseId: id,
+        caseName: targetCase.case_name,
+        details: 'Approved PRIVATE visibility request.'
+      });
       return NextResponse.json({ success: true, visibility: 'PRIVATE' });
 
     } else if (action === 'REJECT') {
       if (session.role !== 'SUPER_ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      db.prepare(
+      db.prepare(`
         UPDATE quotation_cases 
         SET visibility = 'SHARED', visibility_reason = NULL, updated_at = ?
         WHERE id = ?
-      ).run(now, id);
+      `).run(now, id);
 
-      recordActivity(session.userId, 'UPDATE', 'quotation_cases', id, 'Rejected PRIVATE visibility request.');
+      await recordActivity(req, session, {
+        activityType: 'VISIBILITY_CHANGE',
+        quotationCaseId: id,
+        caseName: targetCase.case_name,
+        details: 'Rejected PRIVATE visibility request.'
+      });
       return NextResponse.json({ success: true, visibility: 'SHARED' });
 
     } else {

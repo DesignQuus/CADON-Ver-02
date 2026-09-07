@@ -225,7 +225,13 @@ export default function CasesPage() {
   };
 
   // KPI Calculations
-  const uniqueManagers = Array.from(new Set(cases.map(c => c.created_by_user_id).filter(Boolean)));
+  const uniqueManagers = Array.from(
+    new Map(
+      cases
+        .filter(c => c.created_by_user_id)
+        .map(c => [c.created_by_user_id, { id: c.created_by_user_id, name: c.created_by_name || c.created_by_user_id }])
+    ).values()
+  ).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   const uniqueCompanies = Array.from(new Set(cases.map(c => c.company_name).filter(Boolean)));
   
   const secureVaultCount = cases.filter(c => c.visibility === 'PRIVATE').length;
@@ -603,11 +609,11 @@ export default function CasesPage() {
                 <select
                   value={filterManager}
                   onChange={e => setFilterManager(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-w-[120px]"
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-w-[130px]"
                 >
-                  <option value="ALL">👤 모든 담당자</option>
+                  <option value="ALL">👤 모든 담당자 ({uniqueManagers.length}명)</option>
                   {uniqueManagers.map(m => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m.id} value={m.id}>👤 {m.name}</option>
                   ))}
                 </select>
                 <select
@@ -615,7 +621,7 @@ export default function CasesPage() {
                   onChange={e => setFilterCompany(e.target.value)}
                   className="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-w-[140px]"
                 >
-                  <option value="ALL">🏢 모든 고객사</option>
+                  <option value="ALL">🏢 모든 고객사 ({uniqueCompanies.length}개사)</option>
                   {uniqueCompanies.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}
@@ -897,6 +903,12 @@ export default function CasesPage() {
                                 <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                                 <span className="truncate max-w-[170px]">{c.project_name}</span>
                               </div>
+                              {c.created_by_name && (
+                                <div className="text-[11px] text-slate-500 font-medium flex items-center space-x-1 pt-0.5">
+                                  <span className="text-slate-400">담당:</span>
+                                  <span className="text-blue-700 font-semibold">{c.created_by_name}</span>
+                                </div>
+                              )}
                             </div>
                           </td>
 
@@ -1035,6 +1047,12 @@ export default function CasesPage() {
                           <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           <span>의뢰일: <strong className="text-slate-800 font-mono">{c.request_date}</strong></span>
                         </div>
+                        {c.created_by_name && (
+                          <div className="flex items-center justify-between text-slate-600 font-medium pt-0.5 border-t border-slate-100/80">
+                            <span className="text-slate-400 text-[11px]">견적 담당</span>
+                            <span className="text-blue-700 font-bold text-xs">{c.created_by_name}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* 3-Metric Stats Badges */}
