@@ -1102,10 +1102,8 @@ export default function CadViewer({
           <Layers className="w-8 h-8 text-blue-400/80" />
         </div>
         <h3 className="text-base font-bold text-white mb-2">등록된 도면 파일이 없습니다</h3>
-        <p className="text-xs text-slate-400 max-w-md leading-relaxed mb-6">
+        <p className="text-xs text-slate-400 mb-6 max-w-xl mx-auto whitespace-nowrap">
           좌측 <strong className="text-slate-200">[통합 도면 파일 등록]</strong> 영역에 DWG 또는 DXF 도면 파일을 드래그 &amp; 드롭하여 등록해주세요.
-          <br />
-          도면이 등록되면 2D CAD 벡터 도면과 표제란 BOM 데이터가 자동으로 분석되어 이곳에 표시됩니다.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-800/80">
           <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
