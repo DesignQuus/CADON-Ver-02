@@ -377,7 +377,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   // 4. Bulk Approve (PROMPT 13) - Supports approving all normalized items
   const handleBulkApprove = async (approveAll: boolean = true) => {
     const confirmMsg = approveAll
-      ? `추천 마스터 및 도면 가공품을 포함하여 전체 ${normalizedItems.length}개 품목을 일괄 승인하시겠습니까?`
+      ? `추천 마스터 및 도면 가공품을 포함하여 전체 ${normalizedItems.length}개 품목을 일괄 승인하고, 견적서에 바로 반영하시겠습니까?`
       : '1순위 추천 마스터와 일치하는 미승인 품목만 승인하시겠습니까?';
     if (!confirm(confirmMsg)) return;
     setActionLoading(true);
@@ -388,6 +388,17 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         body: JSON.stringify({ approveAll, onlyMatched: !approveAll })
       });
       if (res.ok) {
+        if (approveAll) {
+          // 일괄 승인 후 자동으로 124개 전체 품목 기준 새 견적서 생성 및 3단계로 이동
+          const qRes = await fetch(`/api/quotation-cases/${id}/create-quote`, {
+            method: 'POST'
+          });
+          if (qRes.ok) {
+            await fetchData();
+            setActiveTab('quote');
+            return;
+          }
+        }
         await fetchData();
       }
     } finally {
@@ -1480,23 +1491,49 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={handleAutoApproveAndCreateQuote}
+                onClick={handleCreateQuote}
                 disabled={actionLoading}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+                className="btn-hover-effect px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+                title="현재 검수 승인된 전체 Final BOM 품목을 반영하여 최신 견적서를 재산출합니다."
               >
                 <RefreshCw className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
-                <span>{latestQuote ? '견적 재계산' : 'AI 추천 일괄 승인 & 견적서 생성'}</span>
+                <span>{latestQuote ? '최신 승인 BOM으로 견적서 재계산' : 'BOM 견적서 생성'}</span>
               </button>
               {latestQuote && (
                 <button
                   onClick={() => handleCloneVersion(latestQuote.id)}
-                  className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold cursor-pointer"
+                  className="btn-hover-effect-secondary px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 cursor-pointer"
                 >
                   새 버전 복제 (V{latestQuote.quote_version + 1})
                 </button>
               )}
             </div>
           </div>
+
+          {/* Mismatch Warning Alert Banner (If approved items count doesn't match quote items count) */}
+          {finalBomItems.filter((f: any) => f.approval_status === 'APPROVED').length !== quoteItems.length && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-xs">
+              <div className="flex items-center space-x-3">
+                <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
+                <div>
+                  <h4 className="font-bold text-xs text-amber-900">
+                    최신 승인된 BOM 품목({finalBomItems.filter((f: any) => f.approval_status === 'APPROVED').length}개)이 현재 견적서({quoteItems.length}개)와 일치하지 않습니다.
+                  </h4>
+                  <p className="text-[11px] text-amber-700 mt-0.5">
+                    도면 품목 승인 내역을 견적서에 반영하려면 아래 버튼을 클릭하여 견적서를 최신으로 동기화하세요.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleCreateQuote}
+                disabled={actionLoading}
+                className="btn-hover-effect px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 shrink-0 cursor-pointer self-start sm:self-auto"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${actionLoading ? 'animate-spin' : ''}`} />
+                <span>최신 {finalBomItems.filter((f: any) => f.approval_status === 'APPROVED').length}개 품목으로 견적서 동기화 🔄</span>
+              </button>
+            </div>
+          )}
 
           {latestQuote ? (
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
