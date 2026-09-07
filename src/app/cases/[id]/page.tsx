@@ -7,7 +7,7 @@ import {
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Sparkles, Building2,
   Folder, Calendar, Check, X, ShieldAlert, ArrowDown, Eye, Download, Info, Trash2,
   Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin,
-  Table, LayoutGrid, Filter
+  Table, LayoutGrid, Filter, RotateCcw
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
@@ -155,6 +155,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const [approvalFilterTab, setApprovalFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED'>('ALL');
   const [approvalSearchText, setApprovalSearchText] = useState('');
   const [approvalViewMode, setApprovalViewMode] = useState<'TABLE' | 'CARD'>('TABLE');
+  const [selectedApprovalIds, setSelectedApprovalIds] = useState<string[]>([]);
 
   const handleNavigateToCadDrawing = (target: any) => {
     if (!target) return;
@@ -401,6 +402,93 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         }
         await fetchData();
       }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 4-2. Unapprove Item (단일 품목 승인 취소)
+  const handleUnapproveItem = async (normalizedItemId: string, itemName?: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/unapprove-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ normalizedItemId })
+      });
+      if (res.ok) {
+        setSelectedApprovalIds((prev) => prev.filter((itId) => itId !== normalizedItemId));
+        await fetchData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || '승인 취소 처리 실패');
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 4-3. Bulk Unapprove (전체 승인 일괄 초기화 or 선택 항목 일괄 취소)
+  const handleBulkUnapprove = async (targetItemIds?: string[]) => {
+    const isSelectedOnly = Array.isArray(targetItemIds) && targetItemIds.length > 0;
+    const confirmMsg = isSelectedOnly
+      ? `선택한 ${targetItemIds.length}개 품목의 승인을 취소하고 검토 대기 상태로 되돌리시겠습니까?`
+      : `현재 승인 완료된 모든 품목(${approvedItemsCount}건)의 승인을 취소하고, 초기 검토 상태로 되돌리시겠습니까?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/bulk-unapprove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds: isSelectedOnly ? targetItemIds : undefined })
+      });
+      if (res.ok) {
+        if (isSelectedOnly) {
+          setSelectedApprovalIds((prev) => prev.filter((itId) => !targetItemIds.includes(itId)));
+        } else {
+          setSelectedApprovalIds([]);
+        }
+        await fetchData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || '일괄 승인 취소 실패');
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 4-4. Bulk Approve Selected Items (선택 항목만 일괄 승인)
+  const handleBulkApproveSelected = async (targetItemIds: string[]) => {
+    if (!targetItemIds || targetItemIds.length === 0) return;
+    setActionLoading(true);
+    try {
+      for (const itemId of targetItemIds) {
+        const norm = normalizedItems.find((n: any) => n.id === itemId);
+        if (!norm) continue;
+        const cand = candidates.find((c: any) => c.normalized_item_id === itemId && c.rank === 1);
+        const decisionType = cand ? 'EXISTING_MASTER' : 'NEW_ITEM_CANDIDATE';
+        await fetch(`/api/quotation-cases/${id}/approve-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            normalizedItemId: itemId,
+            decisionType,
+            selectedMasterId: cand?.master_id || null,
+            selectedMasterCode: cand?.master_code || null,
+            finalName: cand?.standard_name || norm.normalized_name,
+            finalSpec: cand?.specification || norm.spec_candidate,
+            finalMaterial: cand?.material || norm.material_candidate,
+            finalQuantity: norm.quantity,
+            finalUnit: norm.unit,
+            decisionReason: cand ? '1순위 마스터 추천 선택 승인' : '도면 가공품 선택 승인'
+          })
+        });
+      }
+      setSelectedApprovalIds([]);
+      await fetchData();
     } finally {
       setActionLoading(false);
     }
@@ -2155,6 +2243,18 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 <span>AI 추천만 승인</span>
               </button>
+              {approvedItemsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleBulkUnapprove()}
+                  disabled={actionLoading}
+                  className="btn-hover-effect-secondary px-3.5 py-2.5 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 rounded-xl text-xs font-bold border border-rose-300 shadow-2xs flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="현재 승인 완료된 모든 품목을 검토 대기 상태로 일괄 초기화합니다."
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                  <span>승인 일괄 해제 ({approvedItemsCount}건) ↺</span>
+                </button>
+              )}
               <button
                 onClick={handleCreateQuote}
                 disabled={actionLoading}
@@ -2287,23 +2387,80 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
 
+              {/* Multi-Selection Batch Action Toolbar */}
+              {selectedApprovalIds.length > 0 && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900 shadow-xs animate-in fade-in slide-in-from-top-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                    <span className="font-extrabold">선택 품목: {selectedApprovalIds.length}개</span>
+                    <span className="text-slate-500 text-[11px]">
+                      (승인완료: {selectedApprovalIds.filter(id => finalBomItems.some((f: any) => f.normalized_item_id === id)).length}건 / 미승인: {selectedApprovalIds.filter(id => !finalBomItems.some((f: any) => f.normalized_item_id === id)).length}건)
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkApproveSelected(selectedApprovalIds)}
+                      disabled={actionLoading}
+                      className="btn-hover-effect px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>선택 {selectedApprovalIds.length}개 일괄 승인</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkUnapprove(selectedApprovalIds)}
+                      disabled={actionLoading}
+                      className="btn-hover-effect-secondary px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-300 rounded-lg font-bold text-xs shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                      <span>선택 승인 해제 ↺</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedApprovalIds([])}
+                      className="px-2.5 py-1 text-slate-500 hover:text-slate-800 text-xs font-semibold cursor-pointer"
+                    >
+                      선택 해제
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* View Mode 1: High-Density 1-Row Excel Sheet View */}
               {approvalViewMode === 'TABLE' ? (
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white flex flex-col">
                   <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-                    <table className="w-full text-left border-collapse min-w-[960px] text-xs">
+                    <table className="w-full text-left border-collapse min-w-[980px] text-xs">
                       <thead className="sticky top-0 z-20 bg-slate-100/95 backdrop-blur shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-slate-700 text-[11px] font-bold border-b border-slate-200">
                         <tr>
-                          <th className="w-10 min-w-[40px] max-w-[40px] px-2 py-2 text-center sticky left-0 z-30 bg-slate-100 border-r border-slate-200">
+                          <th className="w-8 min-w-[34px] max-w-[34px] px-1.5 py-2 text-center sticky left-0 z-30 bg-slate-100 border-r border-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={filteredNormalizedItems.length > 0 && filteredNormalizedItems.every((n: any) => selectedApprovalIds.includes(n.id))}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const allIds = Array.from(new Set([...selectedApprovalIds, ...filteredNormalizedItems.map((n: any) => n.id)]));
+                                  setSelectedApprovalIds(allIds);
+                                } else {
+                                  const filteredSet = new Set(filteredNormalizedItems.map((n: any) => n.id));
+                                  setSelectedApprovalIds(selectedApprovalIds.filter((id) => !filteredSet.has(id)));
+                                }
+                              }}
+                              className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              title="전체 선택 / 전체 해제"
+                            />
+                          </th>
+                          <th className="w-9 min-w-[38px] max-w-[38px] px-1.5 py-2 text-center sticky left-[34px] z-30 bg-slate-100 border-r border-slate-200">
                             No.
                           </th>
-                          <th className="min-w-[135px] max-w-[160px] px-2.5 py-2 sticky left-[40px] z-30 bg-slate-100 border-r border-slate-200">
+                          <th className="min-w-[135px] max-w-[160px] px-2.5 py-2 sticky left-[72px] z-30 bg-slate-100 border-r border-slate-200">
                             도면번호 (DWG NO.)
                           </th>
                           <th className="min-w-[150px] px-2.5 py-2">
                             도면 품명 / 정규화명
                           </th>
-                          <th className="w-20 min-w-[75px] px-2 py-2 text-center">
+                          <th className="w-24 min-w-[90px] px-2 py-2 text-center">
                             검수 상태
                           </th>
                           <th className="w-16 min-w-[65px] px-2 py-2 text-right">
@@ -2332,7 +2489,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                       <tbody className="divide-y divide-slate-100">
                         {filteredNormalizedItems.length === 0 ? (
                           <tr>
-                            <td colSpan={11} className="py-14 text-center text-slate-400">
+                            <td colSpan={12} className="py-14 text-center text-slate-400">
                               <p className="font-semibold text-xs">일치하는 품목이 없습니다.</p>
                               {approvalSearchText && (
                                 <button
@@ -2360,18 +2517,40 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                     : 'bg-white hover:bg-slate-50/80 text-slate-700'
                                 }`}
                               >
-                                {/* No. (Frozen Column 1) */}
+                                {/* Checkbox Column (Frozen Column 1) */}
                                 <td
-                                  className={`px-2 py-1 text-center font-mono text-[11px] sticky left-0 z-10 border-r border-slate-200/80 ${
+                                  className={`px-1.5 py-1 text-center sticky left-0 z-10 border-r border-slate-200/80 ${
+                                    isSelected ? 'bg-blue-100' : 'bg-white group-hover:bg-slate-50'
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedApprovalIds.includes(ni.id)}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      if (checked) {
+                                        setSelectedApprovalIds((prev) => [...prev, ni.id]);
+                                      } else {
+                                        setSelectedApprovalIds((prev) => prev.filter((id) => id !== ni.id));
+                                      }
+                                    }}
+                                    className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  />
+                                </td>
+
+                                {/* No. (Frozen Column 2) */}
+                                <td
+                                  className={`px-1.5 py-1 text-center font-mono text-[11px] sticky left-[34px] z-10 border-r border-slate-200/80 ${
                                     isSelected ? 'bg-blue-100 text-blue-900 font-bold' : 'bg-white group-hover:bg-slate-50 text-slate-500'
                                   }`}
                                 >
                                   {index + 1}
                                 </td>
 
-                                {/* DWG NO. (Frozen Column 2) */}
+                                {/* DWG NO. (Frozen Column 3) */}
                                 <td
-                                  className={`px-2.5 py-1 font-mono font-bold text-[11px] sticky left-[40px] z-10 border-r border-slate-200/80 truncate max-w-[160px] ${
+                                  className={`px-2.5 py-1 font-mono font-bold text-[11px] sticky left-[72px] z-10 border-r border-slate-200/80 truncate max-w-[160px] ${
                                     isSelected ? 'bg-blue-100 text-blue-900' : 'bg-white group-hover:bg-slate-50 text-blue-700'
                                   }`}
                                   title={ni.drawing_no || '도면번호 미지정'}
@@ -2386,17 +2565,28 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   </span>
                                 </td>
 
-                                {/* Status Badge */}
+                                {/* Status Badge & Hover Unapprove Action */}
                                 <td className="px-2 py-1 text-center whitespace-nowrap">
-                                  <span
-                                    className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                                      finalItem
-                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                        : 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    }`}
-                                  >
-                                    {finalItem ? '승인완료' : '검토필요'}
-                                  </span>
+                                  {finalItem ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleUnapproveItem(ni.id, ni.drawing_name || ni.normalized_name);
+                                      }}
+                                      className="group/btn inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 hover:bg-rose-100 text-emerald-800 hover:text-rose-700 border border-emerald-200 hover:border-rose-300 transition-all cursor-pointer shadow-2xs"
+                                      title="승인완료 상태입니다. 클릭 시 승인을 취소하고 '검토필요' 상태로 되돌립니다."
+                                    >
+                                      <Check className="w-2.5 h-2.5 text-emerald-600 group-hover/btn:hidden shrink-0" />
+                                      <RotateCcw className="w-2.5 h-2.5 text-rose-600 hidden group-hover/btn:inline shrink-0" />
+                                      <span className="group-hover/btn:hidden">승인완료</span>
+                                      <span className="hidden group-hover/btn:inline font-bold">승인 취소 ↺</span>
+                                    </button>
+                                  ) : (
+                                    <span className="inline-block px-2 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
+                                      검토필요
+                                    </span>
+                                  )}
                                 </td>
 
                                 {/* Quantity */}
@@ -2515,15 +2705,26 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                               </div>
                             </div>
 
-                            <span
-                              className={`px-2 py-0.5 rounded-full font-bold text-[10px] shrink-0 ${
-                                finalItem
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
-                              }`}
-                            >
-                              {finalItem ? '승인완료' : '검토필요'}
-                            </span>
+                            {finalItem ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUnapproveItem(ni.id, ni.drawing_name || ni.normalized_name);
+                                }}
+                                className="group/btn px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 hover:bg-rose-100 text-emerald-800 hover:text-rose-700 border border-emerald-200 hover:border-rose-300 transition-all cursor-pointer shadow-2xs shrink-0 flex items-center space-x-1"
+                                title="승인완료 상태입니다. 클릭 시 승인을 취소하고 '검토필요' 상태로 되돌립니다."
+                              >
+                                <Check className="w-2.5 h-2.5 text-emerald-600 group-hover/btn:hidden shrink-0" />
+                                <RotateCcw className="w-2.5 h-2.5 text-rose-600 hidden group-hover/btn:inline shrink-0" />
+                                <span className="group-hover/btn:hidden">승인완료</span>
+                                <span className="hidden group-hover/btn:inline font-bold">승인 취소 ↺</span>
+                              </button>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                                검토필요
+                              </span>
+                            )}
                           </div>
 
                           {/* Project Name from Drawing Title Block */}
@@ -2681,9 +2882,21 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           })()}
                         </div>
                       </div>
-                      <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
-                        승인완료
-                      </span>
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                          승인완료
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUnapproveItem(selectedNormItem.id, selectedNormItem.drawing_name || selectedNormItem.normalized_name)}
+                          disabled={actionLoading}
+                          className="btn-hover-effect-secondary px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-300 rounded-lg text-xs font-bold flex items-center space-x-1 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                          title="이 품목의 승인을 취소하고 검토 대기 상태로 되돌립니다."
+                        >
+                          <RotateCcw className="w-3 h-3 text-rose-600" />
+                          <span>승인 취소 ↺</span>
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -2801,6 +3014,18 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                     >
                       견적 제외 (EXCLUDED)
                     </button>
+                    {finalBomItems.find((f: any) => f.normalized_item_id === selectedNormItem.id) && (
+                      <button
+                        type="button"
+                        onClick={() => handleUnapproveItem(selectedNormItem.id, selectedNormItem.drawing_name || selectedNormItem.normalized_name)}
+                        disabled={actionLoading}
+                        className="btn-hover-effect-secondary px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center space-x-1"
+                        title="이 품목의 승인을 취소하고 검토 대기 상태로 되돌립니다."
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                        <span>승인 취소 (검토 대기로 복귀)</span>
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (

@@ -1,0 +1,80 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const qc = db.prepare('SELECT * FROM quotation_cases WHERE id = ?').get(id) as any;
+  if (!qc) {
+    return NextResponse.json({ error: '견적건을 찾을 수 없습니다.' }, { status: 404 });
+  }
+
+  try {
+    const { normalizedItemId } = await req.json();
+    if (!normalizedItemId) {
+      return NextResponse.json({ error: '품목 ID가 누락되었습니다.' }, { status: 400 });
+    }
+
+    const now = new Date().toISOString();
+
+    // 1. Existing final bom item info for audit
+    const existingFinal = db.prepare(`
+      SELECT * FROM final_bom_items
+      WHERE quotation_case_id = ? AND normalized_item_id = ?
+    `).get(id, normalizedItemId) as any;
+
+    if (!existingFinal) {
+      return NextResponse.json({ error: '해당 품목의 승인 내역이 존재하지 않습니다.' }, { status: 404 });
+    }
+
+    // 2. Delete from final_bom_items
+    db.prepare(`
+      DELETE FROM final_bom_items
+      WHERE quotation_case_id = ? AND normalized_item_id = ?
+    `).run(id, normalizedItemId);
+
+    // 3. Record Audit Record
+    const approvalId = `unappr_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO bom_approval_records (
+        id, quotation_case_id, normalized_item_id, selected_master_id,
+        decision_type, decision_reason, is_override,
+        approved_by_user_id, approved_at, created_at
+      ) VALUES (?, ?, ?, NULL, 'REVOKE_APPROVAL', '사용자 승인 취소 (검토 대기로 변경)', 1, ?, ?, ?)
+    `).run(approvalId, id, normalizedItemId, session.userId, now, now);
+
+    // 4. Update Quote Readiness
+    const totalNorm = (db.prepare('SELECT COUNT(*) as cnt FROM normalized_bom_items WHERE quotation_case_id = ?').get(id) as any).cnt;
+    const totalApproved = (db.prepare('SELECT COUNT(*) as cnt FROM final_bom_items WHERE quotation_case_id = ? AND approval_status = "APPROVED"').get(id) as any).cnt;
+    const totalExcluded = (db.prepare('SELECT COUNT(*) as cnt FROM final_bom_items WHERE quotation_case_id = ? AND approval_status = "EXCLUDED"').get(id) as any).cnt;
+
+    const readiness = (totalApproved + totalExcluded >= totalNorm && totalNorm > 0) ? 'READY_FOR_QUOTE' : 'REVIEW_REQUIRED';
+    db.prepare('UPDATE quotation_cases SET quote_readiness = ?, updated_at = ? WHERE id = ?').run(readiness, now, id);
+
+    // 5. Activity Log
+    await recordActivity(req, session, {
+      activityType: 'BOM_APPROVAL',
+      quotationCaseId: id,
+      details: `BOM 품목 승인 취소: [${existingFinal.final_name}] (${normalizedItemId}) ➡️ 검토 대기 상태로 변경`
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: '승인이 취소되었습니다.',
+      readiness,
+      unapprovedItemId: normalizedItemId
+    });
+  } catch (error: any) {
+    console.error('Unapprove error:', error);
+    return NextResponse.json({ error: error.message || '승인 취소 처리 실패' }, { status: 500 });
+  }
+}
