@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { resolveStoragePath } from '@/lib/storage';
+import { resolveStoragePath, getStorageSubdir } from '@/lib/storage';
 import fs from 'fs';
 import path from 'path';
 
@@ -22,32 +22,55 @@ export async function DELETE(
       return NextResponse.json({ error: '삭제할 파일을 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 1. Find derived files linked to this file
-    const derivedFiles = db.prepare('SELECT * FROM uploaded_files WHERE derived_from_file_id = ?').all(fileId) as any[];
+    // 1. Find all directly or indirectly derived files (e.g. DWG -> DXF -> SVG)
+    const directDerived = db.prepare('SELECT * FROM uploaded_files WHERE derived_from_file_id = ?').all(fileId) as any[];
+    const directDerivedIds = directDerived.map((f: any) => f.id);
+    let secondaryDerived: any[] = [];
+    if (directDerivedIds.length > 0) {
+      const placeholders = directDerivedIds.map(() => '?').join(',');
+      secondaryDerived = db.prepare(`SELECT * FROM uploaded_files WHERE derived_from_file_id IN (${placeholders})`).all(...directDerivedIds) as any[];
+    }
+    const allRelatedFiles = [file, ...directDerived, ...secondaryDerived];
+
+    // Check if any OTHER source CAD files remain for this case
+    const remainingSource = db.prepare(`
+      SELECT COUNT(*) as cnt FROM uploaded_files 
+      WHERE quotation_case_id = ? 
+        AND id != ? 
+        AND (derived_from_file_id IS NULL OR derived_from_file_id != ?)
+        AND file_role != 'VECTOR_SVG'
+        AND file_type IN ('DWG', 'DXF')
+    `).get(id, fileId, fileId) as any;
+
+    const shouldWipeAllCaseData = (remainingSource?.cnt || 0) === 0;
 
     // 2. High-speed atomic DB transaction for instant deletion
     const deleteTx = db.transaction(() => {
-      // Delete CAD parse runs and objects
-      const parseRuns = db.prepare('SELECT id FROM cad_parse_runs WHERE source_file_id = ?').all(fileId) as any[];
+      // Delete CAD parse runs and objects for this file and related files
+      const fileIdsToDelete = allRelatedFiles.map((f: any) => f.id);
+      const placeholders = fileIdsToDelete.map(() => '?').join(',');
+      const parseRuns = db.prepare(`SELECT id FROM cad_parse_runs WHERE source_file_id IN (${placeholders})`).all(...fileIdsToDelete) as any[];
       for (const pr of parseRuns) {
         db.prepare('DELETE FROM cad_objects WHERE parse_run_id = ?').run(pr.id);
         db.prepare('DELETE FROM cad_parse_runs WHERE id = ?').run(pr.id);
       }
 
-      // Delete uploaded files
-      db.prepare('DELETE FROM uploaded_files WHERE derived_from_file_id = ?').run(fileId);
-      db.prepare('DELETE FROM uploaded_files WHERE id = ?').run(fileId);
+      // Delete the file and all its derived files
+      db.prepare(`DELETE FROM uploaded_files WHERE id IN (${placeholders})`).run(...fileIdsToDelete);
 
-      // Check if any files remain for this case
-      const remaining = db.prepare('SELECT COUNT(*) as cnt FROM uploaded_files WHERE quotation_case_id = ?').get(id) as any;
-      if (remaining.cnt === 0) {
+      if (shouldWipeAllCaseData) {
+        // No other source drawings exist: Wipe all remaining orphaned records
         db.prepare('DELETE FROM drawings WHERE quotation_case_id = ?').run(id);
         db.prepare('DELETE FROM drawing_relationships WHERE quotation_case_id = ?').run(id);
         db.prepare('DELETE FROM bom_areas WHERE quotation_case_id = ?').run(id);
         db.prepare('DELETE FROM raw_bom_items WHERE quotation_case_id = ?').run(id);
         db.prepare('DELETE FROM flattened_bom_items WHERE quotation_case_id = ?').run(id);
         db.prepare('DELETE FROM normalized_bom_items WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM master_candidates WHERE normalized_item_id LIKE ?').run(`%${id}%`);
+        db.prepare('DELETE FROM bom_approval_records WHERE quotation_case_id = ?').run(id);
         db.prepare('DELETE FROM final_bom_items WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM quotes WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM uploaded_files WHERE quotation_case_id = ?').run(id);
         db.prepare(`
           UPDATE quotation_cases 
           SET status = 'REGISTERED', quote_readiness = 'PENDING_BOM'
@@ -59,8 +82,7 @@ export async function DELETE(
     deleteTx();
 
     // 3. Delete physical files from disk asynchronously without blocking
-    const allFilesToDelete = [file, ...derivedFiles];
-    for (const f of allFilesToDelete) {
+    for (const f of allRelatedFiles) {
       if (f.storage_path) {
         const absPath = resolveStoragePath(f.storage_path);
         try {
@@ -68,6 +90,31 @@ export async function DELETE(
             fs.unlink(absPath, () => {});
           }
         } catch {}
+      }
+    }
+
+    if (shouldWipeAllCaseData) {
+      // Clean up physical derived files from disk
+      const derivedDir = getStorageSubdir('derived');
+      const localDerived = path.join(process.cwd(), 'storage', 'derived');
+      const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
+      const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
+      const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
+      const egdeskDerived = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'storage', 'derived');
+
+      const derivedFilesToWipe = [
+        `${id}__cad_webgl.bin`,
+        `${id}__cad_texts.json`,
+        `${id}__hd_vector.svg`
+      ];
+
+      for (const baseDir of [derivedDir, localDerived, egdeskDerived]) {
+        for (const fname of derivedFilesToWipe) {
+          const fpath = path.join(baseDir, fname);
+          try {
+            if (fs.existsSync(fpath)) fs.unlink(fpath, () => {});
+          } catch {}
+        }
       }
     }
 

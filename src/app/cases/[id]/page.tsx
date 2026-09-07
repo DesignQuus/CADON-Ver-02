@@ -1062,9 +1062,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const qc = data?.case;
   const rawFiles = data?.files || [];
   const files = rawFiles.filter((f: any) => f.file_role !== 'VECTOR_SVG' && f.file_type !== 'SVG' && !f.original_file_name.endsWith('.svg'));
-  const latestParseRun = data?.latestParseRun;
+  const hasFiles = files.length > 0;
+  const latestParseRun = hasFiles ? data?.latestParseRun : null;
   const analyzedFileId = latestParseRun?.source_file_id || (files.length > 0 ? files[0]?.id : null);
-  const drawings = data?.drawings || [];
+  const drawings = hasFiles ? (data?.drawings || []) : [];
 
   // Check if a file is analyzed directly or via its derived DXF
   const isFileAnalyzed = (file: any) => {
@@ -1090,13 +1091,13 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     activeFile = files.find((f: any) => isFileAnalyzed(f) && (f.file_type === 'DXF' || f.id === analyzedFileId)) || files[0] || null;
   }
 
-  const rawBomItems = data?.rawBomItems || [];
-  const flattenedBomItems = data?.flattenedBomItems || [];
-  const normalizedItems = data?.normalizedItems || [];
-  const candidates = data?.candidates || [];
-  const finalBomItems = data?.finalBomItems || [];
-  const latestQuote = data?.latestQuote;
-  const quoteItems = data?.quoteItems || [];
+  const rawBomItems = hasFiles ? (data?.rawBomItems || []) : [];
+  const flattenedBomItems = hasFiles ? (data?.flattenedBomItems || []) : [];
+  const normalizedItems = hasFiles ? (data?.normalizedItems || []) : [];
+  const candidates = hasFiles ? (data?.candidates || []) : [];
+  const finalBomItems = hasFiles ? (data?.finalBomItems || []) : [];
+  const latestQuote = hasFiles ? data?.latestQuote : null;
+  const quoteItems = hasFiles ? (data?.quoteItems || []) : [];
 
   // 💎 Filtered and Counted Normalized Items for Tab 2 (Calculated inline without hook to avoid early-return violation)
   const approvedItemIds = new Set(finalBomItems.map((f: any) => f.normalized_item_id));

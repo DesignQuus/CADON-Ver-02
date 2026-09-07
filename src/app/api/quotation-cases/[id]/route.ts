@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { getStorageSubdir } from '@/lib/storage';
+import fs from 'fs';
+import path from 'path';
 
 export async function GET(
   req: NextRequest,
@@ -42,6 +45,79 @@ export async function GET(
     WHERE quotation_case_id = ? AND file_role != 'VECTOR_SVG' AND file_type != 'SVG'
     ORDER BY created_at ASC
   `).all(id);
+
+  // Self-healing: If no source drawing files are registered for this case, ensure no ghost data lingers
+  if (files.length === 0) {
+    const orphanedFiles = db.prepare('SELECT COUNT(*) as cnt FROM uploaded_files WHERE quotation_case_id = ?').get(id) as any;
+    const orphanedDrawings = db.prepare('SELECT COUNT(*) as cnt FROM drawings WHERE quotation_case_id = ?').get(id) as any;
+
+    if (orphanedFiles?.cnt > 0 || orphanedDrawings?.cnt > 0) {
+      try {
+        db.transaction(() => {
+          db.prepare('DELETE FROM drawings WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM drawing_relationships WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM bom_areas WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM raw_bom_items WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM flattened_bom_items WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM normalized_bom_items WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM master_candidates WHERE normalized_item_id LIKE ?').run(`%${id}%`);
+          db.prepare('DELETE FROM bom_approval_records WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM final_bom_items WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM quotes WHERE quotation_case_id = ?').run(id);
+          db.prepare('DELETE FROM uploaded_files WHERE quotation_case_id = ?').run(id);
+          db.prepare(`
+            UPDATE quotation_cases 
+            SET status = 'REGISTERED', quote_readiness = 'PENDING_BOM'
+            WHERE id = ?
+          `).run(id);
+        })();
+
+        // Clean up physical derived files from disk
+        const derivedDir = getStorageSubdir('derived');
+        const localDerived = path.join(process.cwd(), 'storage', 'derived');
+        const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
+        const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
+        const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
+        const egdeskDerived = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'storage', 'derived');
+
+        const derivedFilesToWipe = [
+          `${id}__cad_webgl.bin`,
+          `${id}__cad_texts.json`,
+          `${id}__hd_vector.svg`
+        ];
+
+        for (const baseDir of [derivedDir, localDerived, egdeskDerived]) {
+          for (const fname of derivedFilesToWipe) {
+            const fpath = path.join(baseDir, fname);
+            try {
+              if (fs.existsSync(fpath)) fs.unlinkSync(fpath);
+            } catch {}
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('Self-healing cleanup error:', cleanupErr);
+      }
+    }
+
+    return NextResponse.json({
+      case: { ...qc, status: 'REGISTERED', quote_readiness: 'PENDING_BOM' },
+      files: [],
+      drawings: [],
+      relationships: [],
+      bomAreas: [],
+      rawBomItems: [],
+      flattenedBomItems: [],
+      normalizedItems: [],
+      candidates: [],
+      approvalRecords: [],
+      finalBomItems: [],
+      quotes: [],
+      latestQuote: null,
+      quoteItems: [],
+      cadObjects: [],
+      latestParseRun: null
+    });
+  }
   const drawings = db.prepare('SELECT * FROM drawings WHERE quotation_case_id = ? ORDER BY drawing_index ASC').all(id);
   const relationships = db.prepare('SELECT * FROM drawing_relationships WHERE quotation_case_id = ?').all(id);
   const bomAreas = db.prepare('SELECT * FROM bom_areas WHERE quotation_case_id = ?').all(id);

@@ -1095,6 +1095,26 @@ export default function CadViewer({
   // Base stroke width relative to viewport
   const strokeWidth = Math.max(0.6, activeViewport.width / 1800);
 
+  if (allFiles.length === 0) {
+    return (
+      <div className="bg-[#050b14] rounded-2xl border border-slate-800 p-8 shadow-sm flex flex-col items-center justify-center min-h-[640px] text-slate-200 select-none relative w-full text-center">
+        <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-4 shadow-inner">
+          <Layers className="w-8 h-8 text-blue-400/80" />
+        </div>
+        <h3 className="text-base font-bold text-white mb-2">등록된 도면 파일이 없습니다</h3>
+        <p className="text-xs text-slate-400 max-w-md leading-relaxed mb-6">
+          좌측 <strong className="text-slate-200">[통합 도면 파일 등록]</strong> 영역에 DWG 또는 DXF 도면 파일을 드래그 &amp; 드롭하여 등록해주세요.
+          <br />
+          도면이 등록되면 2D CAD 벡터 도면과 표제란 BOM 데이터가 자동으로 분석되어 이곳에 표시됩니다.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-800/80">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span>AutoCAD DWG / DXF 100% 벡터 파싱 및 다단계 조립 구조 자동 추출 지원</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#050b14] rounded-2xl border border-slate-800 p-4 shadow-sm flex flex-col justify-between min-h-[640px] text-slate-200 select-none relative w-full">
       {/* Toast feedback */}

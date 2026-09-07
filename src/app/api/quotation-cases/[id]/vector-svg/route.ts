@@ -16,6 +16,17 @@ export async function GET(
 
   const { id } = await params;
 
+  // Guard: Verify that at least one valid source CAD drawing exists for this case
+  const hasSourceDrawing = db.prepare(`
+    SELECT 1 FROM uploaded_files
+    WHERE quotation_case_id = ? AND file_role != 'VECTOR_SVG' AND file_type IN ('DWG', 'DXF')
+    LIMIT 1
+  `).get(id);
+
+  if (!hasSourceDrawing) {
+    return NextResponse.json({ error: '등록된 도면 파일이 없습니다.' }, { status: 404 });
+  }
+
   // 1. Look for registered VECTOR_SVG file
   let svgFile = db.prepare(`
     SELECT * FROM uploaded_files
