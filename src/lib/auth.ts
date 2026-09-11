@@ -25,7 +25,7 @@ export async function createSession(user: UserSession): Promise<string> {
   const cookieStore = await cookies();
   cookieStore.set('cadon_session', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false,
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 7 // 7 days

@@ -2,105 +2,18 @@
 
 import React, { useEffect, useState, use, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   FileText, Upload, Play, CheckCircle2, AlertTriangle, ChevronRight, ChevronLeft,
   Layers, Database, FileSpreadsheet, RefreshCw, Lock, Unlock, Sparkles, Building2,
-  Folder, Calendar, Check, X, ShieldAlert, ShieldCheck, Clock, Send, ArrowDown, ArrowLeft, Home, Eye, Download, Info, Trash2,
+  Folder, Calendar, Check, X, ShieldAlert, ShieldCheck, Clock, Send, ArrowDown, ArrowLeft, Home, Eye, Download, Info, Trash2, Trash,
   Search, Plus, Pencil, ChevronDown, CheckSquare, Square, Coins, ExternalLink, MapPin,
-  Table, LayoutGrid, Filter, RotateCcw, User, AlertCircle
+  Table, LayoutGrid, Filter, RotateCcw, User, AlertCircle, Brain, Archive, Copy
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
 
-// --- Team Activity Component ---
-const TEAM_MEMBERS = [
-  { id: 'usr_admin', name: '시스템 최고관리자', role: '시스템 총괄', avatar: '👑', color: 'bg-amber-100 text-amber-700 border-amber-300', lastLogin: '방금 전', processed: 15, projects: 5 },
-  { id: 'usr_kim', name: '김견적 과장', role: '영업견적 1팀', avatar: '👨‍💻', color: 'bg-blue-100 text-blue-700 border-blue-300', lastLogin: '10분 전', processed: 3, projects: 1 },
-  { id: 'usr_lee', name: '이견적 대리', role: '영업견적 1팀', avatar: '👩‍💼', color: 'bg-emerald-100 text-emerald-700 border-emerald-300', lastLogin: '30분 전', processed: 3, projects: 1 },
-  { id: 'usr_choi', name: '최견적 차장', role: '기술견적 2팀', avatar: '👨‍💼', color: 'bg-purple-100 text-purple-700 border-purple-300', lastLogin: '1시간 전', processed: 3, projects: 1 },
-  { id: 'usr_song', name: '송견적 주임', role: '기술견적 2팀', avatar: '👩‍💻', color: 'bg-pink-100 text-pink-700 border-pink-300', lastLogin: '2시간 전', processed: 3, projects: 1 },
-  { id: 'usr_park', name: '박견적 대리', role: '정밀견적 3팀', avatar: '🧑‍💻', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', lastLogin: '어제', processed: 3, projects: 1 },
-];
 
-function TeamActivityAccordion() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [hoveredMember, setHoveredMember] = useState<any>(null);
-
-  return (
-    <div className="mt-4 border border-slate-200 rounded-xl bg-white shadow-sm transition-all">
-      {/* Header / Avatar Stack */}
-      <div 
-        className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div>
-          <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
-            팀 사용 내역
-          </h4>
-          <span className="text-[10px] text-slate-400 mt-0.5 block">최근 접속 및 작업 현황</span>
-        </div>
-        
-        <div className="flex items-center">
-          <div className="flex -space-x-2 mr-2">
-            {TEAM_MEMBERS.map((m, idx) => (
-              <div 
-                key={m.id} 
-                className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-white shadow-sm text-[11px] relative cursor-help transition-transform hover:-translate-y-1 hover:z-10 ${m.color}`}
-                style={{ zIndex: TEAM_MEMBERS.length - idx }}
-                onMouseEnter={() => setHoveredMember(m)}
-                onMouseLeave={() => setHoveredMember(null)}
-              >
-                {m.avatar}
-                
-                {/* Popover */}
-                {hoveredMember?.id === m.id && !isOpen && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 p-2 bg-slate-900 text-white rounded-lg text-xs shadow-xl z-50 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-slate-900">
-                    <div className="font-bold border-b border-slate-700 pb-1 mb-1">{m.name} <span className="text-[10px] text-slate-400 font-normal">{m.role}</span></div>
-                    <div className="space-y-0.5 text-[10px]">
-                      <div className="flex justify-between text-slate-300"><span>최근 접속:</span> <span className="text-white">{m.lastLogin}</span></div>
-                      <div className="flex justify-between text-slate-300"><span>분석 완료:</span> <span className="text-white">{m.processed}건</span></div>
-                      <div className="flex justify-between text-slate-300"><span>진행 프로젝트:</span> <span className="text-white">{m.projects}건</span></div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </div>
-      </div>
-
-      {/* Accordion Body */}
-      {isOpen && (
-        <div className="border-t border-slate-100 bg-slate-50/50 p-2 space-y-1.5 rounded-b-xl overflow-hidden">
-          {TEAM_MEMBERS.map(m => (
-            <div key={m.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 transition-all">
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs shadow-sm ${m.color}`}>
-                  {m.avatar}
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-800">{m.name} <span className="text-[10px] text-slate-500 font-normal">{m.role}</span></div>
-                  <div className="text-[10px] text-slate-400">접속: {m.lastLogin}</div>
-                </div>
-              </div>
-              <div className="text-right text-[10px] space-y-0.5">
-                <div className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">
-                  <span className="font-semibold text-slate-800">{m.processed}</span>건 분석
-                </div>
-                <div className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">
-                  <span className="font-semibold text-slate-800">{m.projects}</span>건 진행중
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-// ----------------------------------------
 
 export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -132,12 +45,184 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const [exportResult, setExportResult] = useState<any>(null);
   const [externalFocusIdx, setExternalFocusIdx] = useState<number | null>(null);
 
+  // 🚀 Smart Upload Intent & Multi-Drawing Filter States
+  const [uploadIntentModal, setUploadIntentModal] = useState<{ file: File; uploadJson: any } | null>(null);
+  const [fileViewMode, setFileViewMode] = useState<'ALL' | 'SINGLE'>('ALL');
+
+  // 🏢 Company Detection & Manual Input Modal States
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [inputCompanyName, setInputCompanyName] = useState('');
+  const [existingCompanies, setExistingCompanies] = useState<any[]>([]);
+  const [savingCompany, setSavingCompany] = useState(false);
+
+  // 📦🗑️ Lifecycle Modal & Action States
+  const [detailArchiveModalOpen, setDetailArchiveModalOpen] = useState(false);
+  const [detailArchiveReasonType, setDetailArchiveReasonType] = useState('일정/품의 지연');
+  const [detailArchiveCustomReason, setDetailArchiveCustomReason] = useState('');
+  const [detailLifecycleLoading, setDetailLifecycleLoading] = useState(false);
+
+  const router = useRouter();
+
+  const handleArchiveCase = async () => {
+    const finalReason = detailArchiveReasonType === 'CUSTOM'
+      ? (detailArchiveCustomReason.trim() || '기타 보류')
+      : detailArchiveReasonType;
+    setDetailLifecycleLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ARCHIVE', reason: finalReason })
+      });
+      const resJson = await res.json();
+      if (res.ok) {
+        setDetailArchiveModalOpen(false);
+        await fetchData();
+      } else {
+        alert(resJson.error || '보관함 이동 실패');
+      }
+    } catch (e: any) {
+      alert('통신 오류: ' + e.message);
+    } finally {
+      setDetailLifecycleLoading(false);
+    }
+  };
+
+  const handleTrashCase = async () => {
+    if (!confirm('이 견적건을 휴지통으로 이동하시겠습니까?\n휴지통으로 이동된 건은 견적 목록에서 제외되며 언제든 복원할 수 있습니다.')) return;
+    setDetailLifecycleLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'TRASH' })
+      });
+      const resJson = await res.json();
+      if (res.ok) {
+        await fetchData();
+      } else {
+        alert(resJson.error || '휴지통 이동 실패');
+      }
+    } catch (e: any) {
+      alert('통신 오류: ' + e.message);
+    } finally {
+      setDetailLifecycleLoading(false);
+    }
+  };
+
+  const handleRestoreCase = async () => {
+    setDetailLifecycleLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESTORE' })
+      });
+      const resJson = await res.json();
+      if (res.ok) {
+        await fetchData();
+      } else {
+        alert(resJson.error || '복원 실패');
+      }
+    } catch (e: any) {
+      alert('통신 오류: ' + e.message);
+    } finally {
+      setDetailLifecycleLoading(false);
+    }
+  };
+
+  const handlePermanentDeleteCase = async () => {
+    if (!confirm('⚠️ 경고: 이 견적건과 연관된 모든 CAD 객체, BOM 데이터, 도면 물리 파일이 영구 삭제됩니다.\n삭제 후에는 절대 복원할 수 없습니다. 계속하시겠습니까?')) return;
+    if (!confirm('정말 최종적으로 영구 삭제하시겠습니까?')) return;
+    setDetailLifecycleLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'PERMANENT_DELETE' })
+      });
+      const resJson = await res.json();
+      if (res.ok) {
+        alert('견적건이 완전히 영구 삭제되었습니다.');
+        router.push('/cases');
+      } else {
+        alert(resJson.error || '영구 삭제 실패');
+        setDetailLifecycleLoading(false);
+      }
+    } catch (e: any) {
+      alert('통신 오류: ' + e.message);
+      setDetailLifecycleLoading(false);
+    }
+  };
+
+  const handleOpenCompanyModal = async () => {
+    setShowCompanyModal(true);
+    setInputCompanyName(data?.case?.company_id === 'comp_unassigned' || data?.case?.company_name === '고객사 미지정' ? '' : (data?.case?.company_name || ''));
+    try {
+      const res = await fetch('/api/companies');
+      if (res.ok) {
+        const json = await res.json();
+        setExistingCompanies((json.companies || []).filter((c: any) => c.id !== 'comp_unassigned' && c.company_name !== '고객사 미지정'));
+      }
+    } catch (e) {
+      console.error('Failed to fetch companies:', e);
+    }
+  };
+
+  const handleSaveCompany = async () => {
+    if (!inputCompanyName.trim()) {
+      alert('고객사명을 입력하거나 기존 고객사를 선택해주세요.');
+      return;
+    }
+    setSavingCompany(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyName: inputCompanyName.trim() })
+      });
+      if (res.ok) {
+        setShowCompanyModal(false);
+        await fetchData();
+      } else {
+        const json = await res.json();
+        alert(json.error || '고객사 저장 실패');
+      }
+    } catch (e: any) {
+      alert('오류 발생: ' + e.message);
+    } finally {
+      setSavingCompany(false);
+    }
+  };
+
   // 💎 Inline Direct Price Edit States
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineEditValue, setInlineEditValue] = useState<string>('');
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
   const isSavingInlineRef = useRef(false);
   const isCancelledRef = useRef(false);
+
+  // 🧠 Self-Learning Price Pool Modal States
+  const [showLearnedModal, setShowLearnedModal] = useState(false);
+  const [learnedPoolList, setLearnedPoolList] = useState<any[]>([]);
+  const [loadingLearnedPool, setLoadingLearnedPool] = useState(false);
+  const [learnedPoolSearch, setLearnedPoolSearch] = useState('');
+
+  const openLearnedPoolModal = async () => {
+    setShowLearnedModal(true);
+    setLoadingLearnedPool(true);
+    try {
+      const res = await fetch('/api/manual-prices?mode=ALL_LEARNED');
+      if (res.ok) {
+        const json = await res.json();
+        setLearnedPoolList(json.list || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch learned price pool:', e);
+    } finally {
+      setLoadingLearnedPool(false);
+    }
+  };
 
   // 💎 Quote Checkbox Header Pull-down Menu State
   const [quoteDropdownOpen, setQuoteDropdownOpen] = useState(false);
@@ -175,6 +260,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   // 💎 Approval Workbench Tab Filter & View States
   const [approvalFilterTab, setApprovalFilterTab] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'QUOTE_INCLUDED' | 'QUOTE_EXCLUDED'>('ALL');
+  const [similarityFilter, setSimilarityFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
   const [quoteFilterTab, setQuoteFilterTab] = useState<'ALL' | 'INCLUDED' | 'EXCLUDED'>('ALL');
   const [approvalSearchText, setApprovalSearchText] = useState('');
   const [approvalViewMode, setApprovalViewMode] = useState<'TABLE' | 'CARD'>('TABLE');
@@ -245,24 +331,55 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
   };
 
+  // 💾 BOM Data Snapshot Archiving (Step 2 검수 완료 후 영구 스냅샷 보관)
+  const [archivingSnapshot, setArchivingSnapshot] = useState(false);
+  const handleArchiveSnapshot = async () => {
+    if (!id || archivingSnapshot) return;
+    setArchivingSnapshot(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${id}/archive-snapshot`, {
+        method: 'POST'
+      });
+      const dataRes = await res.json();
+      if (res.ok) {
+        alert(dataRes.message || '현재 케이스의 도면 및 BOM 정규화 데이터 스냅샷이 안전하게 보관되었습니다.');
+      } else {
+        alert(dataRes.error || '스냅샷 보관에 실패했습니다.');
+      }
+    } catch (err: any) {
+      alert('스냅샷 보관 중 통신 오류: ' + err.message);
+    } finally {
+      setArchivingSnapshot(false);
+    }
+  };
+
+  // 📦 Export Package Download (Step 3 최종 패키지 ZIP 다운로드)
+  const handleDownloadZip = () => {
+    if (!id) return;
+    window.open(`/api/quotation-cases/${id}/export-package`, '_blank');
+  };
+
   const handleNavigateToCadDrawing = (target: any) => {
     if (!target) return;
     const allDrawings = data?.drawings || [];
     const targetId = target.matched_drawing_id || target.drawing_id || target.id;
-    const targetDwgNo = target.drawing_no || target.drawing_no_raw || target.part_no;
+    const targetDwgNo = (target.drawing_no || target.drawing_no_raw || target.part_no || '').trim();
 
     let idx = -1;
+    // 1. Match by exact drawing ID
     if (targetId) {
       idx = allDrawings.findIndex((item: any) => item.id === targetId);
     }
+    // 2. Match by exact Drawing / Part Number (normalized & case-insensitive)
     if (idx < 0 && targetDwgNo) {
-      idx = allDrawings.findIndex(
-        (item: any) =>
-          item.drawing_no_raw === targetDwgNo ||
-          item.drawing_no_normalized === targetDwgNo ||
-          item.id === targetDwgNo
-      );
+      const cleanNo = targetDwgNo.toUpperCase().replace(/\s+/g, '');
+      idx = allDrawings.findIndex((item: any) => {
+        const dRaw = (item.drawing_no_raw || '').toUpperCase().replace(/\s+/g, '');
+        const dNorm = (item.drawing_no_normalized || '').toUpperCase().replace(/\s+/g, '');
+        return dRaw === cleanNo || dNorm === cleanNo || item.id === targetDwgNo;
+      });
     }
+    // 3. Match via source_drawings_json list
     if (idx < 0 && target.source_drawings_json) {
       try {
         const sourceList = typeof target.source_drawings_json === 'string'
@@ -273,17 +390,24 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         }
       } catch {}
     }
+    // 4. Fallback match by drawing / item name (avoid generic project name false positives)
     if (idx < 0 && (target.drawing_name || target.normalized_name || target.name_raw || target.item_name)) {
-      const targetName = target.drawing_name || target.normalized_name || target.name_raw || target.item_name;
-      idx = allDrawings.findIndex(
-        (item: any) =>
-          item.drawing_name_raw === targetName ||
-          item.drawing_name_normalized === targetName
-      );
+      const targetName = (target.drawing_name || target.normalized_name || target.name_raw || target.item_name || '').trim();
+      const genericNames = ['인버터 조립 LINE', 'MAIN_ASSEMBLY', 'SUB_ASSEMBLY', '도면', '기본도면'];
+      if (targetName && !genericNames.includes(targetName)) {
+        idx = allDrawings.findIndex(
+          (item: any) =>
+            item.drawing_name_raw === targetName ||
+            item.drawing_name_normalized === targetName
+        );
+      }
     }
 
     if (idx >= 0) {
-      setExternalFocusIdx(idx);
+      setExternalFocusIdx(null);
+      setTimeout(() => {
+        setExternalFocusIdx(idx);
+      }, 50);
     }
     setActiveTab('cad');
   };
@@ -324,9 +448,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     formData.append('file', file);
 
     setUploading(true);
-    setAnalyzing(true);
     try {
-      // 1. Upload File
+      // 1. Upload File to server storage
       const uploadRes = await fetch(`/api/quotation-cases/${id}/upload`, {
         method: 'POST',
         body: formData
@@ -336,23 +459,138 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         throw new Error(uploadJson.error || '파일 업로드에 실패했습니다.');
       }
 
-      // 2. Automatically Trigger CAD & BOM Analysis Pipeline
+      // Check if this case already has other drawings/files
+      const existingUserFiles = (data?.files || []).filter((f: any) => 
+        f.file_role !== 'VECTOR_SVG' && f.file_role !== 'DERIVED'
+      );
+
+      if (existingUserFiles.length > 0) {
+        // 이미 다른 도면 파일이 존재하는 경우 ➡️ 스마트 인텐트 모달 띄워 사용자에게 의도 확인
+        setUploading(false);
+        setUploadIntentModal({ file, uploadJson });
+        return;
+      }
+
+      // 첫 번째 도면인 경우 ➡️ 즉시 분석 진행
+      await executeDirectAnalysis(uploadJson.file.id);
+    } catch (err: any) {
+      alert(err.message || '처리 실패');
+      setUploading(false);
+      setAnalyzing(false);
+      setAnalyzingFileId(null);
+    }
+  };
+
+  // Direct Analysis Execution helper
+  const executeDirectAnalysis = async (fileId: string) => {
+    setAnalyzing(true);
+    setAnalyzingFileId(fileId);
+    try {
       const analyzeRes = await fetch(`/api/quotation-cases/${id}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId: uploadJson.file.id })
+        body: JSON.stringify({ fileId })
       });
       const analyzeJson = await analyzeRes.json();
       if (!analyzeRes.ok) {
         throw new Error(analyzeJson.error || 'CAD 도면 자동 분석 중 오류가 발생했습니다.');
       }
-
+      setSelectedFileId(fileId);
       await fetchData();
     } catch (err: any) {
-      alert(err.message || '처리 실패');
+      alert(err.message || '분석 실패');
     } finally {
       setUploading(false);
       setAnalyzing(false);
+      setAnalyzingFileId(null);
+    }
+  };
+
+  // Intent Action 1: Create separate new case (방안 A)
+  const handleIntentSeparateCase = async () => {
+    if (!uploadIntentModal) return;
+    const { file, uploadJson } = uploadIntentModal;
+    setUploadIntentModal(null);
+    setUploading(true);
+
+    try {
+      const cleanName = file.name.replace(/\.[^/.]+$/, "");
+      const autoCaseName = `${cleanName} 견적의뢰 (DWG 자동분석)`;
+      const createRes = await fetch('/api/quotation-cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: qc?.company_id || 'comp_sechang',
+          projectId: qc?.project_id || 'proj_sechang',
+          caseName: autoCaseName
+        })
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) throw new Error(createData.error || '새 견적건 생성 실패');
+
+      const newCaseId = createData.caseId;
+      // Upload file to new case and analyze
+      const formData = new FormData();
+      formData.append('file', file);
+      const newUploadRes = await fetch(`/api/quotation-cases/${newCaseId}/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const newUploadJson = await newUploadRes.json();
+      if (newUploadRes.ok) {
+        await fetch(`/api/quotation-cases/${newCaseId}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: newUploadJson.file.id })
+        });
+      }
+
+      // Cleanup the temporary file uploaded to this case
+      if (uploadJson?.file?.id) {
+        await fetch(`/api/quotation-cases/${id}/files/${uploadJson.file.id}`, { method: 'DELETE' }).catch(() => {});
+      }
+
+      // Navigate to new case
+      window.location.href = `/cases/${newCaseId}`;
+    } catch (err: any) {
+      alert(err.message || '신규 견적건 분리 생성 실패');
+      setUploading(false);
+    }
+  };
+
+  // Intent Action 2: Add and merge into current case (방안 B)
+  const handleIntentMergeCurrentCase = async () => {
+    if (!uploadIntentModal) return;
+    const { uploadJson } = uploadIntentModal;
+    setUploadIntentModal(null);
+    await executeDirectAnalysis(uploadJson.file.id);
+    setApprovalFeedback({
+      type: 'success',
+      text: '현재 견적건에 신규 도면이 추가 통합되었습니다. [📂 전체 통합 보기]에서 모든 도면을 확인하실 수 있습니다.'
+    });
+  };
+
+  // Intent Action 3: Revision Update with price inheritance (상황 C)
+  const handleIntentRevisionUpdate = async () => {
+    if (!uploadIntentModal) return;
+    const { uploadJson } = uploadIntentModal;
+    setUploadIntentModal(null);
+    // Execute analysis and preserve quote items
+    await executeDirectAnalysis(uploadJson.file.id);
+    setApprovalFeedback({
+      type: 'success',
+      text: '설계 변경 도면이 반영되었습니다. 기존에 입력된 부품 단가 및 마스터 매칭이 자동 승계되었습니다.'
+    });
+  };
+
+  // Cancel Intent Modal
+  const handleCancelUploadIntent = async () => {
+    if (!uploadIntentModal) return;
+    const { uploadJson } = uploadIntentModal;
+    setUploadIntentModal(null);
+    if (uploadJson?.file?.id) {
+      await fetch(`/api/quotation-cases/${id}/files/${uploadJson.file.id}`, { method: 'DELETE' }).catch(() => {});
+      await fetchData();
     }
   };
 
@@ -450,6 +688,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     master: any = null,
     reason: string = ''
   ) => {
+    const targetNorm = normalizedItems.find((n: any) => n.id === normalizedItemId) || selectedNormItem;
+    if (!targetNorm) return;
     setActionLoading(true);
     try {
       const res = await fetch(`/api/quotation-cases/${id}/approve-item`, {
@@ -460,11 +700,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           decisionType,
           selectedMasterId: master?.master_id || master?.id || null,
           selectedMasterCode: master?.master_code || null,
-          finalName: master?.standard_name || selectedNormItem.normalized_name,
-          finalSpec: master?.specification || selectedNormItem.spec_candidate,
-          finalMaterial: master?.material || selectedNormItem.material_candidate,
-          finalQuantity: selectedNormItem.quantity,
-          finalUnit: selectedNormItem.unit,
+          finalName: master?.standard_name || targetNorm.normalized_name,
+          finalSpec: master?.specification || targetNorm.spec_candidate,
+          finalMaterial: master?.material || targetNorm.material_candidate,
+          finalQuantity: targetNorm.quantity,
+          finalUnit: targetNorm.unit,
           decisionReason: reason || `${decisionType} 사용자 승인`
         })
       });
@@ -573,21 +813,22 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         const norm = normalizedItems.find((n: any) => n.id === itemId);
         if (!norm) continue;
         const cand = candidates.find((c: any) => c.normalized_item_id === itemId && c.rank === 1);
-        const decisionType = cand ? 'EXISTING_MASTER' : 'NEW_ITEM_CANDIDATE';
+        const sug = norm.standard_schema_suggestion;
+        const decisionType = cand ? 'EXISTING_MASTER' : (sug ? 'STANDARD_SCHEMA' : 'NEW_ITEM_CANDIDATE');
         await fetch(`/api/quotation-cases/${id}/approve-item`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             normalizedItemId: itemId,
             decisionType,
-            selectedMasterId: cand?.master_id || null,
-            selectedMasterCode: cand?.master_code || null,
-            finalName: cand?.standard_name || norm.normalized_name,
-            finalSpec: cand?.specification || norm.spec_candidate,
-            finalMaterial: cand?.material || norm.material_candidate,
+            selectedMasterId: cand?.master_id || sug?.matched_master_id || null,
+            selectedMasterCode: cand?.master_code || sug?.matched_master_code || null,
+            finalName: cand?.standard_name || sug?.standard_name || norm.drawing_name || norm.normalized_name,
+            finalSpec: cand?.specification || sug?.dimension_str || norm.drawing_scale || norm.spec_candidate || '-',
+            finalMaterial: cand?.material || sug?.standard_material || norm.drawing_material || norm.material_candidate || 'SS400',
             finalQuantity: norm.quantity,
-            finalUnit: norm.unit,
-            decisionReason: cand ? '1순위 마스터 추천 선택 승인' : '도면 가공품 선택 승인'
+            finalUnit: norm.unit || 'EA',
+            decisionReason: cand ? '1순위 마스터 추천 선택 승인' : '표준 데이터 규격 및 유사도 검증 승인'
           })
         });
       }
@@ -596,6 +837,23 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     } finally {
       setActionLoading(false);
     }
+  };
+
+  // 4-5. Bulk Approve High Confidence Items (고신뢰도 90% 이상 품목 일괄 표준화 승인)
+  const handleBulkApproveHighConfidence = async () => {
+    const highConfItems = normalizedItems.filter((ni: any) => 
+      !approvedItemIds.has(ni.id) && 
+      ni.is_quote_included !== 0 &&
+      (ni.standard_schema_suggestion?.confidence_grade === 'HIGH' || (ni.standard_schema_suggestion?.similarity_score || 0) >= 90)
+    );
+    if (highConfItems.length === 0) {
+      alert('고신뢰도(90% 이상) 미승인 품목이 없습니다.');
+      return;
+    }
+    const confirmMsg = `유사도 90% 이상의 고신뢰도 검증 품목 ${highConfItems.length}건을 표준 규격으로 일괄 승인하시겠습니까?`;
+    if (!confirm(confirmMsg)) return;
+
+    await handleBulkApproveSelected(highConfItems.map((it: any) => it.id));
   };
 
   // 5. Create Quote (PROMPT 14)
@@ -944,15 +1202,26 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   // 8. Clone Quote Version (PROMPT 14)
   const handleCloneVersion = async (quoteId: string) => {
+    setActionLoading(true);
     try {
       const res = await fetch(`/api/quotes/${quoteId}/clone-version`, {
         method: 'POST'
       });
+      const data = await res.json();
       if (res.ok) {
+        setApprovalFeedback({
+          type: 'success',
+          text: `새 견적 버전(${data.newQuoteNo})이 생성되었습니다. 이제 원본 보호 상태에서 독립적으로 자유롭게 수정할 수 있습니다.`
+        });
         await fetchData();
+        setActiveTab('quote');
+      } else {
+        alert(data.error || '견적 버전 복제에 실패했습니다.');
       }
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -1436,11 +1705,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const hasFiles = files.length > 0 || (data?.drawings && data.drawings.length > 0);
   const latestParseRun = hasFiles ? data?.latestParseRun : null;
   const analyzedFileId = latestParseRun?.source_file_id || (files.length > 0 ? files[0]?.id : null);
-  const drawings = data?.drawings || [];
+  const allDrawings = data?.drawings || [];
 
   // Check if a file is analyzed directly or via its derived DXF
   const isFileAnalyzed = (file: any) => {
-    if (!file || drawings.length === 0) return false;
+    if (!file || allDrawings.length === 0) return false;
     if (file.id === analyzedFileId) return true;
     if (file.has_derived_dxf) return true;
     if (file.derived_from_file_id && file.derived_from_file_id === analyzedFileId) return true;
@@ -1451,9 +1720,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       const analyzedFile = (data?.allFiles || files).find((f: any) => f.id === analyzedFileId);
       if (analyzedFile && analyzedFile.original_file_name.startsWith(baseName)) return true;
     }
-    return drawings.length > 0;
+    return allDrawings.some((d: any) => d.source_file_id === file.id || !d.source_file_id);
   };
-
+  
   // Resolve currently active file (always prefer primary source drawing)
   let activeFile = null;
   if (selectedFileId) {
@@ -1461,6 +1730,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   }
   if (!activeFile) {
     activeFile = files.find((f: any) => isFileAnalyzed(f)) || files[0] || null;
+  }
+
+  // Active drawings: show selected file's drawings when SINGLE mode, or all drawings when ALL mode
+  let drawings = allDrawings;
+  if (fileViewMode === 'SINGLE' && activeFile) {
+    const filtered = allDrawings.filter((d: any) => d.source_file_id === activeFile.id);
+    if (filtered.length > 0) {
+      drawings = filtered;
+    }
   }
 
   const rawBomItems = hasFiles ? (data?.rawBomItems || []) : [];
@@ -1478,12 +1756,38 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const quoteIncCount = normalizedItems.filter((ni: any) => ni.is_quote_included !== 0).length;
   const quoteExcCount = normalizedItems.filter((ni: any) => ni.is_quote_included === 0).length;
 
+  // 💎 Similarity Analysis Counts (고신뢰도, 확인권장, 미등록)
+  const highConfidenceCount = normalizedItems.filter((ni: any) => 
+    (ni.standard_schema_suggestion?.confidence_grade === 'HIGH' || (ni.standard_schema_suggestion?.similarity_score || 0) >= 90)
+  ).length;
+  const mediumConfidenceCount = normalizedItems.filter((ni: any) => {
+    const s = ni.standard_schema_suggestion?.similarity_score || 0;
+    return (ni.standard_schema_suggestion?.confidence_grade === 'MEDIUM' || (s >= 70 && s < 90));
+  }).length;
+  const lowConfidenceCount = normalizedItems.filter((ni: any) => {
+    const s = ni.standard_schema_suggestion?.similarity_score || 0;
+    return (ni.standard_schema_suggestion?.confidence_grade === 'LOW' || s < 70);
+  }).length;
+
   const filteredNormalizedItems = normalizedItems.filter((ni: any) => {
     const isApproved = approvedItemIds.has(ni.id);
     if (approvalFilterTab === 'PENDING' && (isApproved || ni.is_quote_included === 0)) return false;
     if (approvalFilterTab === 'APPROVED' && !isApproved) return false;
     if (approvalFilterTab === 'QUOTE_INCLUDED' && ni.is_quote_included === 0) return false;
     if (approvalFilterTab === 'QUOTE_EXCLUDED' && (ni.is_quote_included === undefined || ni.is_quote_included === 1)) return false;
+
+    // Similarity Grade Filter
+    if (similarityFilter === 'HIGH') {
+      const s = ni.standard_schema_suggestion?.similarity_score || 0;
+      if (s < 90 && ni.standard_schema_suggestion?.confidence_grade !== 'HIGH') return false;
+    } else if (similarityFilter === 'MEDIUM') {
+      const s = ni.standard_schema_suggestion?.similarity_score || 0;
+      if (s < 70 || s >= 90) return false;
+    } else if (similarityFilter === 'LOW') {
+      const s = ni.standard_schema_suggestion?.similarity_score || 0;
+      if (s >= 70) return false;
+    }
+
     if (approvalSearchText.trim()) {
       const query = approvalSearchText.trim().toLowerCase();
       const dwgNo = (ni.drawing_no || '').toLowerCase();
@@ -1584,6 +1888,124 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
+      {/* ⚠️ Company Unassigned / Logo Detected Notice Banner */}
+      {(qc?.company_id === 'comp_unassigned' || qc?.company_name === '고객사 미지정') && (
+        <div className="no-print print:hidden p-4 bg-amber-500/10 border-2 border-amber-500/60 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-900 shadow-xs animate-in fade-in">
+          <div className="flex items-start space-x-3.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-700 mt-0.5">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-extrabold text-amber-900 flex items-center gap-2">
+                <span>⚠️ 도면 표제란 회사명 미검출 (로고 이미지 또는 약식 표제란 감지)</span>
+                <span className="bg-amber-200 text-amber-950 px-2 py-0.5 rounded text-[10px] font-bold">설계자 판단 필요</span>
+              </div>
+              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                CAD 도면 표제란에 텍스트 회사명이 감지되지 않았습니다 (로고 이미지 또는 기재 생략).<br className="hidden sm:inline" />
+                회사명이 없을 경우 고객사를 직접 지정하거나, 미지정 상태로 견적을 계속 진행하실 수 있습니다.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0 self-end md:self-auto">
+            <button
+              onClick={handleOpenCompanyModal}
+              className="btn-hover-effect px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>고객사 직접 입력 / 선택</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 📦 Archived Case Notice Banner */}
+      {qc?.lifecycle_status === 'ARCHIVED' && (
+        <div className="no-print print:hidden p-4 bg-purple-50 border-2 border-purple-300 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-purple-900 shadow-xs animate-in fade-in">
+          <div className="flex items-start space-x-3.5">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 border border-purple-300 flex items-center justify-center shrink-0 text-purple-700 mt-0.5">
+              <Archive className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-extrabold text-purple-900 flex items-center gap-2">
+                <span>📦 보관 처리된 견적건입니다</span>
+                <span className="bg-purple-200 text-purple-950 px-2 py-0.5 rounded text-[10px] font-bold">
+                  사유: {qc.archive_reason || '보류/이력'}
+                </span>
+                {qc.archived_at && (
+                  <span className="text-purple-600 text-[11px] font-normal">
+                    (보관일: {new Date(qc.archived_at).toLocaleDateString('ko-KR')})
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-purple-800 mt-1 leading-relaxed">
+                현재 보관함에 보관 중인 상태입니다. 이어서 견적을 진행하거나 내용을 수정하시려면 <strong>‘작업 활성 상태로 복원’</strong>을 클릭하세요.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0 self-end md:self-auto">
+            <button
+              onClick={handleRestoreCase}
+              disabled={detailLifecycleLoading}
+              className="btn-hover-effect px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>{detailLifecycleLoading ? '처리 중...' : '작업 활성 상태로 복원'}</span>
+            </button>
+            <button
+              onClick={handleTrashCase}
+              disabled={detailLifecycleLoading}
+              className="px-3 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>휴지통으로</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🗑️ Trashed Case Notice Banner */}
+      {qc?.lifecycle_status === 'TRASHED' && (
+        <div className="no-print print:hidden p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-rose-900 shadow-xs animate-in fade-in">
+          <div className="flex items-start space-x-3.5">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center shrink-0 text-rose-700 mt-0.5">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-extrabold text-rose-900 flex items-center gap-2">
+                <span>🗑️ 휴지통에 보관된 견적건입니다</span>
+                <span className="bg-rose-200 text-rose-950 px-2 py-0.5 rounded text-[10px] font-bold">삭제 대기 상태</span>
+                {qc.trashed_at && (
+                  <span className="text-rose-600 text-[11px] font-normal">
+                    (삭제일: {new Date(qc.trashed_at).toLocaleDateString('ko-KR')})
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                휴지통에 있는 견적건은 목록 및 검색에서 제외되어 있습니다. 언제든 복원하거나 불필요한 경우 영구 삭제할 수 있습니다.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0 self-end md:self-auto">
+            <button
+              onClick={handleRestoreCase}
+              disabled={detailLifecycleLoading}
+              className="btn-hover-effect px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>{detailLifecycleLoading ? '처리 중...' : '견적건 복원'}</span>
+            </button>
+            <button
+              onClick={handlePermanentDeleteCase}
+              disabled={detailLifecycleLoading}
+              className="btn-hover-effect px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+            >
+              <Trash className="w-3.5 h-3.5" />
+              <span>완전 영구 삭제</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div className="no-print print:hidden bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1623,27 +2045,65 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                   결재 보류 모드 (자유 견적 진행)
                 </span>
+                {latestQuote && (
+                  <button
+                    type="button"
+                    onClick={() => handleCloneVersion(latestQuote.id)}
+                    disabled={actionLoading}
+                    className="btn-hover-effect px-2.5 py-1 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50 transition-all"
+                    title="타 담당자 원본을 보존하고 내 전용 새 버전(V2)으로 복제하여 작업"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>새 버전(V{latestQuote.quote_version + 1})으로 복제</span>
+                  </button>
+                )}
               </div>
             ) : canEdit ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300">
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                최고관리자 승인 완료 (수정 활성)
-              </span>
-            ) : (
               <div className="inline-flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                  <Lock className="w-3.5 h-3.5 text-amber-600" />
-                  타 담당자 건 ({ownerName})
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                  최고관리자 승인 완료 (수정 활성)
                 </span>
+                {latestQuote && (
+                  <button
+                    type="button"
+                    onClick={() => handleCloneVersion(latestQuote.id)}
+                    disabled={actionLoading}
+                    className="btn-hover-effect px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50 transition-all"
+                    title="타 담당자 원본을 보존하고 내 전용 새 버전(V2)으로 복제하여 작업"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>새 버전(V{latestQuote.quote_version + 1})으로 복제</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                  <Lock className="w-3.5 h-3.5 text-amber-600" />
+                  타 담당자 건 ({ownerName}) - 읽기/참조 모드
+                </span>
+                {latestQuote && (
+                  <button
+                    type="button"
+                    onClick={() => handleCloneVersion(latestQuote.id)}
+                    disabled={actionLoading}
+                    className="btn-hover-effect px-3 py-1 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all"
+                    title="타 담당자 원본을 덮어쓰지 않고, 안전하게 새 버전으로 복제하여 내 담당으로 수정"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>📑 새 버전(V{latestQuote.quote_version + 1})으로 복제하여 수정</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleBypassApproval}
                   disabled={actionLoading}
-                  className="btn-hover-effect px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50 transition-all"
-                  title="최고관리자 결재 승인 없이 즉시 견적 진행"
+                  className="btn-hover-effect px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-300 hover:border-emerald-300 shadow-2xs flex items-center space-x-1 cursor-pointer disabled:opacity-50 transition-all"
+                  title="최고관리자 결재 승인 없이 즉시 직접 견적 진행"
                 >
-                  <Sparkles className="w-3 h-3" />
-                  <span>결재 승인 없이 견적 진행</span>
+                  <Sparkles className="w-3 h-3 text-emerald-600" />
+                  <span>결재 없이 직접진행</span>
                 </button>
               </div>
             )}
@@ -1701,13 +2161,34 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           )}
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-2">
-            <span className="flex items-center space-x-1">
+            <span className="flex items-center space-x-1.5">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              <span className="font-semibold text-slate-700">{qc.company_name}</span>
+              {qc.company_id === 'comp_unassigned' || qc.company_name === '고객사 미지정' ? (
+                <span className="inline-flex items-center gap-1.5 font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                  ⚠️ 고객사 미지정
+                  <button
+                    onClick={handleOpenCompanyModal}
+                    className="text-[11px] text-blue-700 hover:text-blue-900 underline font-bold cursor-pointer"
+                  >
+                    [지정]
+                  </button>
+                </span>
+              ) : (
+                <span className="font-semibold text-slate-700 flex items-center gap-1">
+                  {qc.company_name}
+                  <button
+                    onClick={handleOpenCompanyModal}
+                    className="text-[10px] text-slate-400 hover:text-blue-600 font-normal cursor-pointer ml-1"
+                    title="고객사명 수정"
+                  >
+                    <Pencil className="w-3 h-3 inline" />
+                  </button>
+                </span>
+              )}
             </span>
             <span className="flex items-center space-x-1">
               <Folder className="w-3.5 h-3.5 text-slate-400" />
-              <span>{qc.project_name}</span>
+              <span>{qc.company_id === 'comp_unassigned' ? '프로젝트 미정' : qc.project_name}</span>
             </span>
             <span className="flex items-center space-x-1">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -1716,16 +2197,64 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {/* Quick Return & Quick Stats */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <Link
-            href="/cases"
-            className="inline-flex items-center justify-center space-x-2 px-3.5 py-2.5 bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-bold text-slate-700 hover:text-blue-700 transition-all shadow-2xs group cursor-pointer"
-            title="견적의뢰 관리 전체 목록(대시보드)으로 이동"
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-transform" />
-            <span>전체 견적 목록</span>
-          </Link>
+        {/* Quick Return, Lifecycle Actions & Quick Stats */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="flex items-center gap-1.5">
+            <Link
+              href="/cases"
+              className="inline-flex items-center justify-center space-x-1.5 px-3 py-2 bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-bold text-slate-700 hover:text-blue-700 transition-all shadow-2xs group cursor-pointer"
+              title="견적의뢰 관리 전체 목록(대시보드)으로 이동"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-transform" />
+              <span>전체 목록</span>
+            </Link>
+
+            {qc?.lifecycle_status === 'ARCHIVED' ? (
+              <button
+                type="button"
+                onClick={handleRestoreCase}
+                disabled={detailLifecycleLoading}
+                className="inline-flex items-center space-x-1 px-3 py-2 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-xl text-xs font-bold text-purple-700 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                title="작업 활성 상태로 복원"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>복원</span>
+              </button>
+            ) : qc?.lifecycle_status === 'TRASHED' ? (
+              <button
+                type="button"
+                onClick={handleRestoreCase}
+                disabled={detailLifecycleLoading}
+                className="inline-flex items-center space-x-1 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-700 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                title="휴지통에서 복원"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>복원</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDetailArchiveModalOpen(true)}
+                  className="inline-flex items-center space-x-1 px-2.5 py-2 bg-white hover:bg-purple-50 border border-purple-200 hover:border-purple-300 rounded-xl text-xs font-bold text-purple-700 transition-all shadow-2xs cursor-pointer"
+                  title="견적건 보관함으로 이동 (보류/이력)"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                  <span>보관</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTrashCase}
+                  disabled={detailLifecycleLoading}
+                  className="inline-flex items-center space-x-1 px-2.5 py-2 bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-bold text-rose-600 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                  title="견적건 휴지통으로 이동 (삭제)"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>삭제</span>
+                </button>
+              </>
+            )}
+          </div>
 
           {/* Quick Stats */}
           <div className="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -1844,42 +2373,59 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shrink-0">
+            <div className="bg-gradient-to-r from-amber-50 via-sky-50 to-blue-50 border-2 border-amber-300 rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-xs">
+              <div className="flex items-start sm:items-center space-x-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shrink-0 mt-0.5 sm:mt-0">
                   <Lock className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-amber-950 flex items-center gap-2">
-                    <span>타 담당자({ownerName} 님)의 견적 진행건</span>
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                    <span>타 담당자({ownerName} 님)의 견적 진행건 (원본 보존 모드)</span>
+                    <span className="text-[10px] bg-blue-100 text-blue-800 font-extrabold px-2 py-0.5 rounded-full border border-blue-200">
+                      추천: 새 버전 복제 수정
+                    </span>
                     {approvalStatus === 'REJECTED' && (
                       <span className="text-[10px] bg-rose-100 text-rose-800 font-extrabold px-1.5 py-0.5 rounded border border-rose-300">
                         이전 요청 반려됨 {permission?.reviewComment ? `("${permission.reviewComment}")` : ''}
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-amber-800 mt-0.5">
-                    다른 담당자의 견적건 수정 및 승인은 최고관리자의 승인이 필요하지만, <strong>결재 보류 모드로 즉시 진행</strong>할 수 있습니다.
+                  <div className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                    다른 담당자의 원본 견적서를 안전하게 보존하고 업무 혼선(단가 왜곡 및 책임 공방)을 방지하기 위해 <strong>새 버전으로 복제하여 작업</strong>하는 방식을 권장합니다. 필요한 경우 관리자 결재 없이 즉시 원본 수정도 가능합니다.
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {latestQuote && (
+                  <button
+                    type="button"
+                    onClick={() => handleCloneVersion(latestQuote.id)}
+                    disabled={actionLoading}
+                    className="btn-hover-effect px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
+                    title="타 담당자 원본을 보존하고 새 버전(V2)으로 복제하여 내 담당으로 즉시 안전하게 수정"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>📑 새 버전(V{latestQuote.quote_version + 1})으로 복제하여 수정 (추천)</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleBypassApproval}
                   disabled={actionLoading}
-                  className="btn-hover-effect px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
-                  title="최고관리자의 승인 없이 결재를 건너뛰고 즉시 견적 진행(수정/승인/산출)을 시작합니다."
+                  className="btn-hover-effect px-3 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-emerald-50 hover:text-emerald-700 border border-slate-300 hover:border-emerald-400 rounded-lg shadow-2xs flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
+                  title="원본 견적서를 결재 없이 직접 수정 진행"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>최고관리자 결재 승인 없이 견적 진행 🚀</span>
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>결재 없이 원본 직접진행</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setShowApprovalModal(true)}
-                  className="px-3 py-2 text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition-colors flex items-center justify-center space-x-1 shrink-0 cursor-pointer"
+                  className="px-2.5 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors flex items-center justify-center space-x-1 shrink-0 cursor-pointer"
+                  title="최고관리자에게 공식 수정 결재 요청"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>결재 요청 양식</span>
+                  <Send className="w-3 h-3 text-slate-500" />
+                  <span>결재 요청</span>
                 </button>
               </div>
             </div>
@@ -2056,8 +2602,6 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
 
-              {/* Team Activity UI */}
-              <TeamActivityAccordion />
 
               {/* Uploaded Files List */}
               <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -2065,12 +2609,31 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                     등록된 도면 파일 목록 ({files.length})
                   </h4>
-                  <span className="text-[11px] text-slate-400">클릭하여 선택</span>
+                  {/* Button 4: Multi-Drawing View Mode Toggle Chip */}
+                  {allDrawings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFileViewMode(prev => prev === 'ALL' ? 'SINGLE' : 'ALL')}
+                      className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all shadow-2xs cursor-pointer ${
+                        fileViewMode === 'ALL'
+                          ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-200'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                      title={fileViewMode === 'ALL' ? '모든 등록 도면의 데이터를 통합하여 보고 있습니다' : '선택한 파일의 도면만 단독으로 보고 있습니다'}
+                    >
+                      <span>{fileViewMode === 'ALL' ? '📂 전체 통합 보기' : '📄 개별 도면 보기'}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        fileViewMode === 'ALL' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}>
+                        {fileViewMode === 'ALL' ? `총 ${allDrawings.length}개` : `${drawings.length}개`}
+                      </span>
+                    </button>
+                  )}
                 </div>
                 {files.map((f: any) => {
                   const isSelected = (selectedFileId === f.id) || (!selectedFileId && f.id === activeFile?.id);
                   const isCurrentlyAnalyzed = isFileAnalyzed(f);
-                  const isThisFileAnalyzing = analyzing && (analyzingFileId === f.id || (!analyzingFileId && isSelected));
+                  const isThisFileAnalyzing = analyzing && analyzingFileId === f.id;
                   const isDwg = f.file_type === 'DWG' || f.original_file_name.endsWith('.dwg');
 
                   return (
@@ -2206,6 +2769,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               isAnalyzing={analyzing}
               allFiles={files}
               onSelectFile={(fileId) => setSelectedFileId(fileId)}
+              onBomUpdated={fetchData}
             />
           </div>
       </div>
@@ -2356,6 +2920,15 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </div>
 
                 <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                  <button
+                    type="button"
+                    onClick={handleDownloadZip}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors cursor-pointer flex items-center space-x-1.5 shadow-2xs shrink-0"
+                    title="케이스 전체 도면(DWG/DXF), BOM 정규화 데이터, 프로젝트 매니페스트를 단일 ZIP 압축파일로 다운로드합니다."
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span>📦 프로젝트 패키지(ZIP) 다운로드</span>
+                  </button>
                   <button
                     type="button"
                     onClick={handleExcludeDuplicates}
@@ -2758,14 +3331,39 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                 </span>
                               </div>
                             ) : (
-                              <div
-                                className="group/price inline-flex items-center justify-end space-x-1.5 font-mono font-semibold text-rose-500 hover:text-rose-700 cursor-pointer px-1.5 py-0.5 rounded-sm hover:bg-rose-50 transition-colors"
-                              >
-                                <span>₩0 (미등록)</span>
-                                <span className="text-[9.5px] px-1 py-0.2 rounded bg-rose-100 text-rose-700 border border-rose-200 group-hover/price:bg-rose-600 group-hover/price:text-white transition-colors inline-flex items-center space-x-0.5 font-sans font-medium animate-pulse">
-                                  <Pencil className="w-2.5 h-2.5 shrink-0" />
-                                  <span>입력</span>
-                                </span>
+                              <div className="flex flex-col items-end">
+                                <div
+                                  className="group/price inline-flex items-center justify-end space-x-1.5 font-mono font-semibold text-rose-500 hover:text-rose-700 cursor-pointer px-1.5 py-0.5 rounded-sm hover:bg-rose-50 transition-colors"
+                                >
+                                  <span>₩0 (미등록)</span>
+                                  <span className="text-[9.5px] px-1 py-0.2 rounded bg-rose-100 text-rose-700 border border-rose-200 group-hover/price:bg-rose-600 group-hover/price:text-white transition-colors inline-flex items-center space-x-0.5 font-sans font-medium animate-pulse">
+                                    <Pencil className="w-2.5 h-2.5 shrink-0" />
+                                    <span>입력</span>
+                                  </span>
+                                </div>
+                                {(() => {
+                                  const normMatch = (normalizedItems || []).find((n: any) => 
+                                    n.normalized_name === qi.item_name || n.drawing_name === qi.item_name || n.raw_name === qi.item_name
+                                  );
+                                  const learnedVal = normMatch?.standard_schema_suggestion?.learned_unit_price;
+                                  if (learnedVal && learnedVal > 0) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDirectApplyPrice(Number(learnedVal), '자가학습 추천 단가 즉시 적용', 'MANUAL_PRICE');
+                                        }}
+                                        className="mt-1 text-[9.5px] bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold px-1.5 py-0.5 rounded border border-purple-300 inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                        title="과거 도면 검수에서 학습된 단가입니다. 클릭 시 즉시 적용됩니다."
+                                      >
+                                        <Brain className="w-2.5 h-2.5 text-purple-600" />
+                                        <span>추천 ₩{learnedVal.toLocaleString()} 적용</span>
+                                      </button>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             )}
                           </td>
@@ -2960,6 +3558,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
           onExportExcel={handleExportExcel}
           exportResult={exportResult}
           actionLoading={actionLoading}
+          onDownloadZip={handleDownloadZip}
         />
       )}
 
@@ -3148,26 +3747,38 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               <p className="text-xs text-slate-500 mt-0.5">
                 도면에서 추출된 BOM 부품을 검토하여 사내 마스터 매칭 또는 신규 가공품으로 확정 승인 후 3단계 견적서로 전달합니다.
               </p>
+              <div className="flex items-center space-x-2 mt-2 flex-wrap gap-y-1">
+                <span className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  전체 도면 {normalizedItems.length}개
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>견적 대상 {quoteIncCount}개</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-purple-50 text-purple-700 border border-purple-200 flex items-center space-x-1">
+                  <span>📦 AI 중복/상위 자동제외 {quoteExcCount}개</span>
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center space-x-2 flex-wrap gap-y-2">
               <button
+                onClick={handleBulkApproveHighConfidence}
+                disabled={actionLoading}
+                className="btn-hover-effect px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                title="자재 유사도 90% 이상인 고신뢰도 품목들을 표준 규격으로 일괄 승인합니다."
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>⚡ 고신뢰도(90%↑) 일괄 표준화 승인 ({highConfidenceCount}건)</span>
+              </button>
+              <button
                 onClick={() => handleBulkApprove(true)}
                 disabled={actionLoading}
-                className="btn-hover-effect px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+                className="btn-hover-effect px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
                 title="1단계 표제란에서 견적 대상으로 선택된 품목들을 일괄 승인합니다."
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>견적 대상 품목 일괄 승인 ({quoteIncCount}개)</span>
-              </button>
-              <button
-                onClick={() => handleBulkApprove(false)}
-                disabled={actionLoading}
-                className="btn-hover-effect-secondary px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                title="AI 1순위 추천 마스터와 매칭된 품목만 승인합니다."
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>AI 추천만 승인</span>
               </button>
               {approvedItemsCount > 0 && (
                 <button
@@ -3182,11 +3793,30 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 </button>
               )}
               <button
+                type="button"
+                onClick={openLearnedPoolModal}
+                className="btn-hover-effect-secondary px-3.5 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 hover:text-purple-800 rounded-xl text-xs font-bold border border-purple-200 shadow-2xs flex items-center space-x-1.5 transition-all cursor-pointer"
+                title="도면 검수 및 견적을 통해 자동으로 학습/축적된 자재/단가 지식풀을 조회합니다."
+              >
+                <Brain className="w-4 h-4 text-purple-600" />
+                <span>🧠 자가학습 지식풀</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleArchiveSnapshot}
+                disabled={archivingSnapshot}
+                className="btn-hover-effect-secondary px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 shadow-2xs flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                title="현재 정규화된 BOM 분석 데이터 전체를 버전별 영구 스냅샷으로 안전하게 보관합니다."
+              >
+                <Archive className={`w-4 h-4 text-slate-600 ${archivingSnapshot ? 'animate-bounce' : ''}`} />
+                <span>{archivingSnapshot ? '보관 처리 중...' : '💾 BOM 데이터 보관'}</span>
+              </button>
+              <button
                 onClick={handleCreateQuote}
                 disabled={actionLoading}
-                className="btn-hover-effect px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+                className="btn-hover-effect px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <span>승인 반영 ➡️ 3. 견적서 산출로 이동</span>
+                <span>승인 반영 ➔ 3. 견적서 산출로 이동</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -3324,6 +3954,76 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   </button>
                 </div>
 
+                {/* Similarity Grade Filter Tabs */}
+                <div className="flex items-center space-x-1 bg-slate-100/80 p-0.5 rounded-xl border border-slate-200 text-xs shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 px-1.5 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                    <span>유사도:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSimilarityFilter('ALL')}
+                    className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                      similarityFilter === 'ALL'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    전체
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimilarityFilter('HIGH')}
+                    className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      similarityFilter === 'HIGH'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-700 hover:bg-emerald-100/60'
+                    }`}
+                    title="자재 유사도 90% 이상 (고신뢰도 매칭)"
+                  >
+                    <span>🟢 90%↑</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      similarityFilter === 'HIGH' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {highConfidenceCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimilarityFilter('MEDIUM')}
+                    className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      similarityFilter === 'MEDIUM'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-amber-700 hover:bg-amber-100/60'
+                    }`}
+                    title="자재 유사도 70~89% (검토 권장)"
+                  >
+                    <span>🟡 70~89%</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      similarityFilter === 'MEDIUM' ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {mediumConfidenceCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimilarityFilter('LOW')}
+                    className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                      similarityFilter === 'LOW'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-700 hover:bg-rose-100/60'
+                    }`}
+                    title="자재 유사도 70% 미만 (신규/미등록)"
+                  >
+                    <span>🔴 &lt;70%</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      similarityFilter === 'LOW' ? 'bg-white/25 text-white' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {lowConfidenceCount}
+                    </span>
+                  </button>
+                </div>
+
                 {/* Search Box */}
                 <div className="relative flex-1 sm:max-w-xs">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -3389,9 +4089,35 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               {approvalViewMode === 'TABLE' ? (
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white flex flex-col">
                   <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-                    <table className="w-full text-left border-collapse min-w-[980px] text-xs">
-                      <thead className="sticky top-0 z-20 bg-slate-100/95 backdrop-blur shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-slate-700 text-[11px] font-bold border-b border-slate-200">
-                        <tr>
+                    <table className="w-full text-left border-collapse min-w-[1280px] text-xs">
+                      <thead className="sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-[11px] font-bold border-b border-slate-200">
+                        {/* 1단 대분류 헤더 (Tier 1: Side-by-Side Domain Split) */}
+                        <tr className="border-b border-slate-200 text-slate-800">
+                          <th colSpan={6} className="px-3 py-1.5 bg-slate-100/90 text-left border-r-2 border-slate-300">
+                            <div className="flex items-center space-x-1.5 text-slate-800 font-extrabold text-[11px]">
+                              <FileText className="w-3.5 h-3.5 text-slate-500" />
+                              <span>[좌측] 📋 도면 원본 데이터 (Raw Extracted from DWG)</span>
+                            </div>
+                          </th>
+                          <th colSpan={6} className="px-3 py-1.5 bg-blue-50/95 text-left border-r border-blue-200">
+                            <div className="flex items-center justify-between text-blue-900 font-extrabold text-[11px]">
+                              <span className="flex items-center space-x-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                <span>[우측] ✨ 자재리스트 표준 데이터 규격 & 유사도 분석 (Standard Schema)</span>
+                              </span>
+                              <span className="text-[10px] font-medium text-blue-700 bg-white/80 px-2 py-0.2 rounded-full border border-blue-200">
+                                9대 표준 매핑
+                              </span>
+                            </div>
+                          </th>
+                          <th className="px-2 py-1.5 bg-slate-100 text-center sticky right-0 z-30 border-l border-slate-200 text-[10.5px]">
+                            위치
+                          </th>
+                        </tr>
+
+                        {/* 2단 상세 컬럼 헤더 (Tier 2: Detail Columns) */}
+                        <tr className="bg-slate-50 text-slate-600 text-[10.5px]">
+                          {/* 좌측: 도면 원본 컬럼 6개 */}
                           <th className="w-8 min-w-[34px] max-w-[34px] px-1.5 py-2 text-center sticky left-0 z-30 bg-slate-100 border-r border-slate-200">
                             <input
                               type="checkbox"
@@ -3419,34 +4145,41 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           <th className="w-9 min-w-[38px] max-w-[38px] px-1.5 py-2 text-center sticky left-[34px] z-30 bg-slate-100 border-r border-slate-200">
                             No.
                           </th>
-                          <th className="min-w-[135px] max-w-[160px] px-2.5 py-2 sticky left-[72px] z-30 bg-slate-100 border-r border-slate-200">
-                            도면번호 (DWG NO.)
+                          <th className="min-w-[125px] max-w-[145px] px-2.5 py-2 sticky left-[72px] z-30 bg-slate-100 border-r border-slate-200">
+                            도면번호 (DWG)
                           </th>
-                          <th className="min-w-[150px] px-2.5 py-2">
-                            도면 품명 / 정규화명
+                          <th className="min-w-[140px] px-2.5 py-2">
+                            도면 원문 품명
                           </th>
-                          <th className="w-28 min-w-[105px] px-2 py-2 text-center">
-                            검수 상태
+                          <th className="w-20 min-w-[75px] px-2 py-2">
+                            도면 재질
                           </th>
-                          <th className="w-16 min-w-[65px] px-2 py-2 text-right">
-                            수량
+                          <th className="w-16 min-w-[65px] px-2 py-2 text-right border-r-2 border-slate-300">
+                            도면 수량
                           </th>
-                          <th className="w-20 min-w-[80px] px-2 py-2">
-                            재질
+
+                          {/* 우측: 표준 마스터 규격 & 유사도 컬럼 6개 */}
+                          <th className="w-20 min-w-[75px] px-2 py-2 text-center bg-blue-50/40">
+                            자재구분
                           </th>
-                          <th className="w-14 min-w-[55px] px-1.5 py-2 text-center">
-                            척도
+                          <th className="min-w-[120px] px-2.5 py-2 bg-blue-50/40">
+                            표준 재질 (비중)
                           </th>
-                          <th className="w-12 min-w-[50px] px-1.5 py-2 text-center">
-                            Rev
+                          <th className="min-w-[145px] px-2.5 py-2 bg-blue-50/40">
+                            가공치수 / 예상중량
                           </th>
-                          <th className="min-w-[130px] px-2.5 py-2">
-                            프로젝트명
+                          <th className="min-w-[90px] px-2 py-2 bg-blue-50/40">
+                            표준 후처리
                           </th>
-                          <th className="min-w-[150px] px-2.5 py-2">
-                            승인 매칭 마스터
+                          <th className="w-24 min-w-[90px] px-2 py-2 text-center bg-blue-50/40">
+                            유사도
                           </th>
-                          <th className="w-24 min-w-[96px] px-2 py-2 text-center sticky right-0 z-30 bg-slate-100 border-l border-slate-200">
+                          <th className="w-28 min-w-[105px] px-2 py-2 text-center bg-blue-50/40 border-r border-blue-200">
+                            표준화 승인
+                          </th>
+
+                          {/* CAD 줌인 고정 컬럼 */}
+                          <th className="w-20 min-w-[75px] px-1.5 py-2 text-center sticky right-0 z-30 bg-slate-100 border-l border-slate-200">
                             도면 위치
                           </th>
                         </tr>
@@ -3454,7 +4187,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                       <tbody className="divide-y divide-slate-100">
                         {filteredNormalizedItems.length === 0 ? (
                           <tr>
-                            <td colSpan={12} className="py-14 text-center text-slate-400">
+                            <td colSpan={13} className="py-14 text-center text-slate-400">
                               <p className="font-semibold text-xs">일치하는 품목이 없습니다.</p>
                               {approvalSearchText && (
                                 <button
@@ -3471,18 +4204,19 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                           filteredNormalizedItems.map((ni: any, index: number) => {
                             const finalItem = finalBomItems.find((f: any) => f.normalized_item_id === ni.id);
                             const isSelected = selectedNormItem?.id === ni.id;
+                            const sug = ni.standard_schema_suggestion || {};
 
                             return (
                               <tr
                                 key={ni.id}
                                 onClick={() => setSelectedNormItem(ni)}
-                                className={`group h-9 transition-colors cursor-pointer text-xs ${
+                                className={`group h-10 transition-colors cursor-pointer text-xs ${
                                   isSelected
                                     ? 'bg-blue-100/75 text-blue-950 font-medium ring-1 ring-inset ring-blue-300'
                                     : 'bg-white hover:bg-slate-50/80 text-slate-700'
                                 }`}
                               >
-                                {/* Checkbox Column (Frozen Column 1) */}
+                                {/* [좌측 1] Checkbox Column (Frozen 1) */}
                                 <td
                                   className={`px-1.5 py-1 text-center sticky left-0 z-10 border-r border-slate-200/80 ${
                                     isSelected ? 'bg-blue-100' : 'bg-white group-hover:bg-slate-50'
@@ -3506,7 +4240,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   />
                                 </td>
 
-                                {/* No. (Frozen Column 2) */}
+                                {/* [좌측 2] No. (Frozen 2) */}
                                 <td
                                   className={`px-1.5 py-1 text-center font-mono text-[11px] sticky left-[34px] z-10 border-r border-slate-200/80 ${
                                     isSelected ? 'bg-blue-100 text-blue-900 font-bold' : 'bg-white group-hover:bg-slate-50 text-slate-500'
@@ -3515,9 +4249,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   {index + 1}
                                 </td>
 
-                                {/* DWG NO. (Frozen Column 3) */}
+                                {/* [좌측 3] DWG NO. (Frozen 3) */}
                                 <td
-                                  className={`px-2.5 py-1 font-mono font-bold text-[11px] sticky left-[72px] z-10 border-r border-slate-200/80 truncate max-w-[160px] ${
+                                  className={`px-2.5 py-1 font-mono font-bold text-[11px] sticky left-[72px] z-10 border-r border-slate-200/80 truncate max-w-[145px] ${
                                     isSelected ? 'bg-blue-100 text-blue-900' : 'bg-white group-hover:bg-slate-50 text-blue-700'
                                   }`}
                                   title={ni.drawing_no || '도면번호 미지정'}
@@ -3525,23 +4259,112 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   {ni.drawing_no || '도면번호 미지정'}
                                 </td>
 
-                                {/* Drawing / Normalized Name */}
-                                <td className="px-2.5 py-1 truncate max-w-[180px]" title={ni.drawing_name || ni.normalized_name}>
+                                {/* [좌측 4] 도면 원문 품명 */}
+                                <td className="px-2.5 py-1 truncate max-w-[160px]" title={ni.drawing_name || ni.normalized_name}>
                                   <span className={`font-semibold ${isSelected ? 'text-blue-950' : 'text-slate-900'}`}>
                                     {ni.drawing_name || ni.normalized_name}
                                   </span>
-                                  {ni.is_quote_included === 0 && (
-                                    <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-block">
-                                      견적 제외{ni.exclude_reason ? ` (${ni.exclude_reason})` : ''}
+                                  {ni.is_quote_included === 0 ? (
+                                    ni.exclude_reason?.includes('조립') || ni.drawing_type?.includes('ASSY') ? (
+                                      <span className="ml-1 px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-purple-50 text-purple-700 border border-purple-200 inline-block shrink-0" title="조립도 상위 도면명칭으로 부품표 자식 부품이 견적에 포함되어 자동 제외됨">
+                                        📦 조립도상위
+                                      </span>
+                                    ) : ni.exclude_reason?.includes('중복') || ni.exclude_reason?.includes('BOM') ? (
+                                      <span className="ml-1 px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 inline-block shrink-0" title="조립도 BOM에 포함되어 단품도 수량 중복 방지를 위해 결합됨">
+                                        🔗 BOM기포함
+                                      </span>
+                                    ) : (
+                                      <span className="ml-1 px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-block shrink-0" title={ni.exclude_reason || '견적 제외'}>
+                                        제외
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="ml-1 px-1.5 py-0.2 rounded text-[9px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block shrink-0">
+                                      견적대상
                                     </span>
                                   )}
                                 </td>
 
-                                {/* Status Badge & Unapprove Action (Jitter-free) */}
-                                <td className="px-2 py-1 text-center whitespace-nowrap">
+                                {/* [좌측 5] 도면 재질 */}
+                                <td className="px-2 py-1 truncate max-w-[85px] text-slate-600 text-[11px]" title={ni.drawing_material || ni.material_candidate}>
+                                  {ni.drawing_material || ni.material_candidate || 'SS400'}
+                                </td>
+
+                                {/* [좌측 6] 도면 수량 (도면 영역 경계선 border-r-2) */}
+                                <td className="px-2 py-1 text-right font-extrabold whitespace-nowrap border-r-2 border-slate-300">
+                                  <span className={isSelected ? 'text-blue-900' : 'text-slate-900'}>
+                                    {ni.quantity}
+                                  </span>{' '}
+                                  <span className="text-[10px] text-slate-400 font-normal">{ni.unit || 'EA'}</span>
+                                </td>
+
+                                {/* [우측 7] 자재구분 (가공품 vs 구매품) */}
+                                <td className="px-2 py-1 text-center whitespace-nowrap bg-blue-50/20">
+                                  {sug.item_type === 'COMMERCIAL' ? (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200">
+                                      구매품
+                                    </span>
+                                  ) : (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
+                                      가공품
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* [우측 8] 표준 재질 (비중) */}
+                                <td className="px-2.5 py-1 truncate max-w-[130px] bg-blue-50/20 text-[11px]" title={`${sug.standard_material || ni.drawing_material || 'SS400'} (비중: ${sug.density || 7.85})`}>
+                                  <span className="font-bold text-slate-900">{sug.standard_material || ni.drawing_material || 'SS400'}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">({sug.density || 7.85})</span>
+                                </td>
+
+                                {/* [우측 9] 가공치수 / 예상중량 */}
+                                <td className="px-2.5 py-1 truncate max-w-[155px] bg-blue-50/20 text-[11px]" title={sug.dimension_str || ni.drawing_scale}>
+                                  <span className="font-mono text-slate-700">{sug.dimension_str || '-'}</span>
+                                  {sug.calculated_weight_kg > 0 && (
+                                    <span className="ml-1 font-bold text-blue-700 text-[10px]">
+                                      ({sug.calculated_weight_kg}kg)
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* [우측 10] 표준 후처리 */}
+                                <td className="px-2 py-1 truncate max-w-[90px] bg-blue-50/20 text-[10.5px] text-slate-600">
+                                  {sug.treatment_label || '일반'}
+                                </td>
+
+                                {/* [우측 11] 유사도 신호등 뱃지 */}
+                                <td className="px-2 py-1 text-center whitespace-nowrap bg-blue-50/20">
+                                  {(sug.similarity_score || 0) >= 90 ? (
+                                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-extrabold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200" title="고신뢰도 매칭 (90% 이상)">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                      <span>{sug.similarity_score || 95}%</span>
+                                    </span>
+                                  ) : (sug.similarity_score || 0) >= 70 ? (
+                                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-extrabold text-[10px] bg-amber-100 text-amber-800 border border-amber-200" title="확인 권장 (70~89%)">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                      <span>{sug.similarity_score}%</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-extrabold text-[10px] bg-rose-100 text-rose-800 border border-rose-200" title="신규/미등록 (<70%)">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                      <span>{sug.similarity_score || 50}%</span>
+                                    </span>
+                                  )}
+                                  {sug.learned_unit_price > 0 && (
+                                    <span 
+                                      className="block mt-1 text-[9.5px] font-mono text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 truncate"
+                                      title={`자가학습 검증 단가: ₩${sug.learned_unit_price.toLocaleString()} (${sug.learned_approval_count || 1}회 승인, ${sug.learned_company_name || '사내'})`}
+                                    >
+                                      ₩{sug.learned_unit_price.toLocaleString()}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* [우측 12] 표준화 승인 / 상태 */}
+                                <td className="px-2 py-1 text-center whitespace-nowrap bg-blue-50/20 border-r border-blue-200">
                                   {finalItem ? (
                                     <div className="inline-flex items-center justify-center space-x-1">
-                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      <span className="inline-flex items-center space-x-0.5 px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200">
                                         <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
                                         <span>승인완료</span>
                                       </span>
@@ -3559,55 +4382,35 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                       </button>
                                     </div>
                                   ) : (
-                                    <span className="inline-block px-2 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
-                                      검토필요
-                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleApproveItem(
+                                          ni.id,
+                                          'STANDARD_SCHEMA',
+                                          {
+                                            standard_name: sug.standard_name || ni.drawing_name || ni.normalized_name,
+                                            specification: sug.dimension_str || ni.drawing_scale || '-',
+                                            material: sug.standard_material || ni.drawing_material || 'SS400',
+                                            master_code: sug.matched_master_code || ni.drawing_no || 'CUSTOM'
+                                          },
+                                          '표준 데이터 규격 및 유사도 검증 승인'
+                                        );
+                                      }}
+                                      disabled={actionLoading}
+                                      className="btn-hover-effect px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10.5px] font-bold inline-flex items-center space-x-1 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                                      title="우측 표준 규격으로 즉시 확정 승인합니다."
+                                    >
+                                      <Sparkles className="w-3 h-3 text-amber-300" />
+                                      <span>표준화 적용</span>
+                                    </button>
                                   )}
                                 </td>
 
-                                {/* Quantity */}
-                                <td className="px-2 py-1 text-right font-extrabold whitespace-nowrap">
-                                  <span className={isSelected ? 'text-blue-900' : 'text-slate-900'}>
-                                    {ni.quantity}
-                                  </span>{' '}
-                                  <span className="text-[10px] text-slate-500 font-normal">{ni.unit || 'EA'}</span>
-                                </td>
-
-                                {/* Material */}
-                                <td className="px-2 py-1 truncate max-w-[100px] text-slate-600 text-[11px]" title={ni.drawing_material || ni.material_candidate}>
-                                  {ni.drawing_material || ni.material_candidate || 'SS400'}
-                                </td>
-
-                                {/* Scale */}
-                                <td className="px-1.5 py-1 text-center text-slate-500 text-[11px] font-mono">
-                                  {ni.drawing_scale || '-'}
-                                </td>
-
-                                {/* Revision */}
-                                <td className="px-1.5 py-1 text-center font-mono text-[11px] font-bold text-slate-600">
-                                  {ni.drawing_revision || 'R00'}
-                                </td>
-
-                                {/* Project Name */}
-                                <td className="px-2.5 py-1 truncate max-w-[150px] text-slate-600 text-[11px]" title={ni.project_name || data?.case?.project_name}>
-                                  {ni.project_name || data?.case?.project_name || '-'}
-                                </td>
-
-                                {/* Approved Master Matching */}
-                                <td className="px-2.5 py-1 truncate max-w-[160px] text-[11px]">
-                                  {finalItem ? (
-                                    <span className="text-emerald-700 font-semibold flex items-center space-x-1" title={`[${finalItem.final_master_code}] ${finalItem.final_name}`}>
-                                      <Check className="w-3 h-3 text-emerald-600 shrink-0" />
-                                      <span className="truncate">[{finalItem.final_master_code}] {finalItem.final_name}</span>
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 italic">미매칭 (검토 대기)</span>
-                                  )}
-                                </td>
-
-                                {/* CAD Drawing Zoom In Action (Frozen Right Column) */}
+                                {/* CAD 줌인 (우측 고정) */}
                                 <td
-                                  className={`px-2 py-1 text-center sticky right-0 z-10 border-l border-slate-200/80 whitespace-nowrap ${
+                                  className={`px-1.5 py-1 text-center sticky right-0 z-10 border-l border-slate-200/80 whitespace-nowrap ${
                                     isSelected ? 'bg-blue-100' : 'bg-white group-hover:bg-slate-50'
                                   }`}
                                 >
@@ -3618,10 +4421,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                       setSelectedNormItem(ni);
                                       handleNavigateToCadDrawing(ni);
                                     }}
-                                    className="btn-hover-effect px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10.5px] font-bold inline-flex items-center space-x-1 transition-all cursor-pointer shadow-xs"
+                                    className="btn-hover-effect px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded text-[10.5px] font-bold inline-flex items-center space-x-1 transition-all cursor-pointer shadow-2xs"
                                     title="1. 도면등록 & 뷰어 탭으로 이동하여 해당 도면/BOM 위치를 줌인합니다."
                                   >
-                                    <ExternalLink className="w-3 h-3" />
+                                    <ExternalLink className="w-3 h-3 text-blue-600" />
                                     <span>줌인 ↗</span>
                                   </button>
                                 </td>
@@ -3696,9 +4499,23 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                                   <h4 className="font-extrabold text-slate-900 text-xs truncate">
                                     {ni.drawing_name || ni.normalized_name}
                                   </h4>
-                                  {ni.is_quote_included === 0 && (
-                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
-                                      견적 제외{ni.exclude_reason ? ` (${ni.exclude_reason})` : ''}
+                                  {ni.is_quote_included === 0 ? (
+                                    ni.exclude_reason?.includes('조립') || ni.drawing_type?.includes('ASSY') ? (
+                                      <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shrink-0" title="조립도 상위 도면명칭으로 부품표 자식 부품이 견적에 포함되어 자동 제외됨">
+                                        📦 조립도상위
+                                      </span>
+                                    ) : ni.exclude_reason?.includes('중복') || ni.exclude_reason?.includes('BOM') ? (
+                                      <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 shrink-0" title="조립도 BOM에 포함되어 단품도 수량 중복 방지를 위해 결합됨">
+                                        🔗 BOM기포함
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                                        견적 제외{ni.exclude_reason ? ` (${ni.exclude_reason})` : ''}
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                      견적대상
                                     </span>
                                   )}
                                 </div>
@@ -3867,6 +4684,99 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                         </div>
                       </div>
                     </div>
+
+                    {/* Standard Schema & Similarity Recommendation Card */}
+                    {selectedNormItem.standard_schema_suggestion && (
+                      <div className="mt-3 p-3.5 bg-gradient-to-br from-blue-50/80 via-indigo-50/50 to-emerald-50/40 rounded-xl border border-blue-200 text-xs space-y-2.5">
+                        <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
+                          <span className="flex items-center space-x-1.5 text-blue-900 font-extrabold text-[11.5px]">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            <span>자재리스트 표준 규격 & 유사도 분석 결과</span>
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                            selectedNormItem.standard_schema_suggestion.similarity_score >= 90
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : selectedNormItem.standard_schema_suggestion.similarity_score >= 70
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-rose-100 text-rose-800 border border-rose-300'
+                          }`}>
+                            유사도: {selectedNormItem.standard_schema_suggestion.similarity_score}%
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-slate-700 text-[11px]">
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">자재구분</span>
+                            <span className={`inline-block font-extrabold px-1.5 py-0.2 rounded text-[10px] ${
+                              selectedNormItem.standard_schema_suggestion.item_type === 'COMMERCIAL'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {selectedNormItem.standard_schema_suggestion.item_type_label}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">표준 재질 (비중)</span>
+                            <strong className="text-slate-900 font-bold">{selectedNormItem.standard_schema_suggestion.standard_material}</strong>
+                            <span className="text-[10px] text-slate-400 ml-1">({selectedNormItem.standard_schema_suggestion.density})</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">가공치수 / 예상중량</span>
+                            <span className="font-mono text-slate-900 font-semibold">{selectedNormItem.standard_schema_suggestion.dimension_str}</span>
+                            {selectedNormItem.standard_schema_suggestion.calculated_weight_kg > 0 && (
+                              <span className="text-blue-700 font-bold block text-[10px]">
+                                예상: {selectedNormItem.standard_schema_suggestion.calculated_weight_kg} kg
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">표준 후처리</span>
+                            <span className="text-slate-800 font-medium">{selectedNormItem.standard_schema_suggestion.treatment_label}</span>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <span className="text-slate-400 block text-[10px]">매칭 마스터</span>
+                            <span className="font-mono text-blue-900 font-semibold truncate block">
+                              {selectedNormItem.standard_schema_suggestion.matched_master_name 
+                                ? `[${selectedNormItem.standard_schema_suggestion.matched_master_code}] ${selectedNormItem.standard_schema_suggestion.matched_master_name}`
+                                : '신규 가공품 (도면 맞춤 제작)'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Self-Learning Learned Price Card */}
+                        {selectedNormItem.standard_schema_suggestion.learned_unit_price && selectedNormItem.standard_schema_suggestion.learned_unit_price > 0 && (
+                          <div className="p-2.5 bg-gradient-to-r from-purple-50 to-indigo-50/70 rounded-xl border border-purple-200 text-purple-900 text-[11px] flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Brain className="w-4 h-4 text-purple-600 shrink-0" />
+                              <div>
+                                <span className="font-extrabold text-[11.5px] block text-purple-950">
+                                  자가학습 검증 단가: ₩{Number(selectedNormItem.standard_schema_suggestion.learned_unit_price).toLocaleString()}
+                                </span>
+                                <span className="text-[10px] text-purple-600">
+                                  누적 {selectedNormItem.standard_schema_suggestion.learned_approval_count || 1}회 검증 승인 ({selectedNormItem.standard_schema_suggestion.learned_company_name || '사내 지식풀'})
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200/80 font-bold text-purple-800 shrink-0">
+                              자동완성 준비완료
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Similarity Reasons */}
+                        {selectedNormItem.standard_schema_suggestion.similarity_reasons?.length > 0 && (
+                          <div className="pt-2 border-t border-blue-200/60 text-[10.5px] space-y-1">
+                            <span className="font-bold text-slate-600 block">유사도 판정 근거:</span>
+                            {selectedNormItem.standard_schema_suggestion.similarity_reasons.map((r: string, rIdx: number) => (
+                              <div key={rIdx} className="flex items-center space-x-1.5 text-slate-600">
+                                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Approval Status Banner (If already approved) */}
@@ -4626,6 +5536,567 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                   <span>{requestingApproval ? '요청 제출 중...' : '최고관리자에게 승인 요청'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🧠 Self-Learning Knowledge Pool Modal */}
+      {showLearnedModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl xl:max-w-7xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header (1행 단일 라인 배치) */}
+            <div className="px-5 py-3.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border-b border-purple-200 flex items-center justify-between gap-4">
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Brain className="w-4 h-4" />
+                </div>
+                <div className="flex items-center space-x-3 truncate">
+                  <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2 shrink-0">
+                    <span>도면 분석 자재·단가 자가학습(Self-Learning) 지식풀</span>
+                    <span className="text-[11px] font-mono font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200">
+                      총 {learnedPoolList.length}건 누적
+                    </span>
+                  </h3>
+                  <span className="text-slate-300 hidden md:inline">|</span>
+                  <p className="text-[11px] text-slate-500 truncate hidden md:inline">
+                    도면 검수 및 견적 입력 시 자동 축적되며, 다음 도면 분석 시 95% 이상 신뢰도로 단가를 자동완성합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLearnedModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Search & Stats Toolbar */}
+            <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="부품명, 표준명, 규격, 재질, 고객사 검색..."
+                  value={learnedPoolSearch}
+                  onChange={(e) => setLearnedPoolSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+                {learnedPoolSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setLearnedPoolSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2 text-[11px] shrink-0">
+                <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 font-semibold shadow-2xs">
+                  총 검증 횟수: <strong className="text-purple-700 font-bold">{learnedPoolList.reduce((sum, it) => sum + (it.approval_count || 1), 0)}회</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={openLearnedPoolModal}
+                  className="px-3 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold inline-flex items-center space-x-1 cursor-pointer shadow-2xs transition-colors"
+                >
+                  <RefreshCw className={`w-3 h-3 text-purple-600 ${loadingLearnedPool ? 'animate-spin' : ''}`} />
+                  <span>새로고침</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Table Content (1행 기준 깔끔한 시트 레이아웃) */}
+            <div className="p-4 overflow-y-auto max-h-[64vh]">
+              {loadingLearnedPool ? (
+                <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-purple-600" />
+                  <p className="text-xs font-semibold">자가학습 지식풀 불러오는 중...</p>
+                </div>
+              ) : learnedPoolList.length === 0 ? (
+                <div className="py-16 text-center text-slate-400">
+                  <Brain className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                  <p className="font-semibold text-xs text-slate-600">아직 학습된 자재 데이터가 없습니다.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">2단계에서 도면 부품을 승인하거나 3단계에서 단가를 입력하면 자동으로 누적됩니다.</p>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
+                  <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
+                    <thead className="bg-slate-100 text-slate-700 text-[11px] font-bold border-b border-slate-200 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-3 py-2.5 text-center w-12">No.</th>
+                        <th className="px-4 py-2.5">표준 부품명</th>
+                        <th className="px-3 py-2.5 text-slate-500">도면 원문 표기</th>
+                        <th className="px-3 py-2.5">표준 규격</th>
+                        <th className="px-3 py-2.5">표준 재질</th>
+                        <th className="px-4 py-2.5 text-right">최근 단가</th>
+                        <th className="px-3 py-2.5 text-center">검증 승인 횟수</th>
+                        <th className="px-3 py-2.5">출처 / 고객사</th>
+                        <th className="px-3 py-2.5 text-slate-500 text-center">최근 적용일</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white font-sans">
+                      {learnedPoolList
+                        .filter((item: any) => {
+                          if (!learnedPoolSearch) return true;
+                          const q = learnedPoolSearch.toLowerCase();
+                          return (
+                            item.item_name?.toLowerCase().includes(q) ||
+                            item.standard_name?.toLowerCase().includes(q) ||
+                            item.specification?.toLowerCase().includes(q) ||
+                            item.material?.toLowerCase().includes(q) ||
+                            item.company_name?.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((item: any, idx: number) => (
+                          <tr key={item.id} className="hover:bg-purple-50/40 transition-colors h-10">
+                            <td className="px-3 py-2 text-center font-mono text-slate-400 text-[11px]">
+                              {idx + 1}
+                            </td>
+                            <td className="px-4 py-2 font-bold text-slate-900">
+                              <span className="text-purple-950">{item.standard_name || item.item_name}</span>
+                            </td>
+                            <td className="px-3 py-2 text-slate-500 text-[11px]">
+                              {item.standard_name && item.item_name !== item.standard_name ? item.item_name : '-'}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-slate-600 text-[11px]">
+                              {item.specification || '-'}
+                            </td>
+                            <td className="px-3 py-2 text-[11px]">
+                              <span className="font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                {item.standard_material || item.material || 'SS400'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono font-bold text-purple-700 text-[12px]">
+                              {Number(item.unit_price) > 0 ? `₩${Number(item.unit_price).toLocaleString()}` : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full font-extrabold text-[10.5px] bg-purple-100 text-purple-800 border border-purple-200">
+                                <span>⚡</span>
+                                <span>{item.approval_count || 1}회 승인</span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              {item.company_name || '사내 공통'}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-500 font-mono text-center">
+                              {(item.last_used_at || item.created_at)?.slice(0, 10)}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-500 text-[11px]">
+                💡 자가학습 풀은 도면 승인 및 견적 확정 시 실시간으로 동기화됩니다.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowLearnedModal(false)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs cursor-pointer transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 Smart Upload Intent Modal (Buttons 1, 2, 3) */}
+      {uploadIntentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold flex items-center gap-2">
+                    도면 추가 분석 방식 선택
+                    <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200">
+                      스마트 인텐트 감지
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    기존 도면 데이터 보존 및 최적의 견적 산출 방식을 선택해 주세요.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelUploadIntent}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* File Info Alert */}
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-2 truncate">
+                  <span className="px-2 py-0.5 rounded font-mono text-[10px] font-extrabold bg-blue-600 text-white">
+                    추가 업로드 파일
+                  </span>
+                  <span className="font-bold text-slate-900 truncate">
+                    {uploadIntentModal.file.name}
+                  </span>
+                  <span className="text-slate-500 font-mono text-[11px]">
+                    ({(uploadIntentModal.file.size / 1024 / 1024).toFixed(2)} MB)
+                  </span>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-700 shrink-0 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  무결성 보존 준비됨
+                </span>
+              </div>
+
+              <div className="text-xs text-slate-600 leading-relaxed font-medium">
+                현재 프로젝트에 이미 등록된 도면이 존재합니다. 새로 추가된 도면을 어떻게 처리하시겠습니까?
+              </div>
+
+              {/* 3 Option Action Cards */}
+              <div className="space-y-3">
+                {/* 1. Primary Recommendation: Merge into Current Case (방안 B) */}
+                <div
+                  onClick={handleIntentMergeCurrentCase}
+                  className="p-4 rounded-xl border-2 border-emerald-400 bg-emerald-50/50 hover:border-emerald-600 hover:bg-emerald-100/60 transition-all cursor-pointer group shadow-xs ring-2 ring-emerald-200/50"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform mt-0.5 shadow-xs">
+                        <Folder className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-emerald-950 text-sm group-hover:text-emerald-800 transition-colors">
+                            [추천 1순위] ➕ 현재 견적건에 추가 통합 분석 (방안 B)
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white shadow-2xs">
+                            실무 표준 권장
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-900 leading-relaxed font-medium">
+                          <strong>기존 도면 데이터를 100% 안전하게 보존</strong>하면서, 이번 도면을 현재 화면에 추가하여 한 견적서로 합산 분석합니다.
+                        </p>
+                        <div className="flex items-center space-x-2 pt-0.5 text-[11px] text-emerald-700">
+                          <span>✓ 동일 프로젝트 세트 도면 · 한 화면에 다중 도면 모아 견적 작성 시 필수 선택</span>
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-emerald-600 group-hover:translate-x-1 transition-all shrink-0 mt-2" />
+                  </div>
+                </div>
+
+                {/* 2. Revision Update (상황 C) */}
+                <div
+                  onClick={handleIntentRevisionUpdate}
+                  className="p-4 rounded-xl border-2 border-slate-200 hover:border-purple-600 hover:bg-purple-50/50 transition-all cursor-pointer group shadow-2xs"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform mt-0.5">
+                        <RotateCcw className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-slate-900 text-sm group-hover:text-purple-700 transition-colors">
+                            [설계변경] 🔄 기존 도면 설계변경(Rev-Up) 교체
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-100 text-purple-800">
+                            리비전 승계
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          기존 도면의 수정 리비전으로 반영하며, 이미 입력된 부품 단가 및 마스터 매칭 정보를 신규 도면에 자동 승계합니다.
+                        </p>
+                        <div className="flex items-center space-x-2 pt-0.5 text-[11px] text-slate-400">
+                          <span>• 설계 수정 도면 재입고 시 선택 (단가 재입력 방지)</span>
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all shrink-0 mt-2" />
+                  </div>
+                </div>
+
+                {/* 3. Separate Case (방안 A) - Placed at bottom with clear caution */}
+                <div
+                  onClick={handleIntentSeparateCase}
+                  className="p-4 rounded-xl border-2 border-slate-200 hover:border-blue-600 hover:bg-blue-50/50 transition-all cursor-pointer group shadow-2xs"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform mt-0.5">
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-slate-900 text-sm group-hover:text-blue-700 transition-colors">
+                            [프로젝트 분리] 🚀 별도 신규 견적건으로 분리 생성 (방안 A)
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                            새 창/새 건
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          현재 화면을 벗어나 <strong className="text-blue-900">완전히 새로운 견적 프로젝트를 별도 생성</strong>하여 독립적으로 견적서를 작성합니다.
+                        </p>
+                        <div className="flex items-center space-x-2 pt-0.5 text-[11px] text-amber-700 font-medium">
+                          <span>⚠️ 주의: 현재 화면의 도면과 분리되어 새 프로젝트 화면으로 이동합니다.</span>
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0 mt-2" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-500 text-[11px]">
+                🛡️ CADON 안전 분리: 선택 전까지 기존 데이터에 아무런 변경을 가하지 않습니다.
+              </span>
+              <button
+                type="button"
+                onClick={handleCancelUploadIntent}
+                className="px-4 py-2 border border-slate-300 hover:bg-white text-slate-700 font-bold rounded-lg text-xs cursor-pointer transition-colors"
+              >
+                취소 (업로드 중단)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🏢 Company Edit / Manual Input Modal */}
+      {showCompanyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white">고객사 지정 / 직접 입력 (설계자 판단)</h3>
+                  <p className="text-[11px] text-slate-400">도면 표제란 회사명 누락 또는 로고 이미지 대응</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCompanyModal(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
+                💡 <strong>안내:</strong> 도면 표제란에 텍스트 회사명이 없거나 회사 로고가 이미지 형태로 삽입된 경우,
+                원청 발주처 또는 견적 대상 고객사를 직접 지정하실 수 있습니다.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  고객사명 (직접 입력 또는 선택) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={inputCompanyName}
+                    onChange={(e) => setInputCompanyName(e.target.value)}
+                    placeholder="예: (주)현대엘리베이터, 오티스, 미쯔비시, 또는 부품 제조사명"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveCompany();
+                    }}
+                  />
+                  {inputCompanyName && (
+                    <button
+                      type="button"
+                      onClick={() => setInputCompanyName('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Select from Existing Companies */}
+              {existingCompanies.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold text-slate-500 mb-1.5">
+                    📋 기존 등록된 고객사 빠른 선택:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                    {existingCompanies.map((c: any) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setInputCompanyName(c.company_name)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                          inputCompanyName === c.company_name
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'
+                        }`}
+                      >
+                        {c.company_name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Smart Recommendations from Drawing Context */}
+              <div>
+                <div className="text-[11px] font-bold text-slate-500 mb-1.5">
+                  ✨ 도면 파일명/모델 기반 추천 키워드:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {['(주)현대엘리베이터', '오티스엘리베이터코리아', '티케이엘리베이터', 'MGK 동기권상기', '자체 제작(외주)'].map((kw) => (
+                    <button
+                      key={kw}
+                      type="button"
+                      onClick={() => setInputCompanyName(kw)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 cursor-pointer transition-colors"
+                    >
+                      + {kw}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => setShowCompanyModal(false)}
+                className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+              >
+                닫기 (미지정 상태 유지)
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCompany}
+                disabled={savingCompany || !inputCompanyName.trim()}
+                className="btn-hover-effect px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs cursor-pointer disabled:opacity-50 transition-colors flex items-center space-x-1.5 shadow-xs"
+              >
+                {savingCompany ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>저장 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>고객사 적용 및 저장</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📦 Case Detail Archive Reason Modal */}
+      {detailArchiveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-purple-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Archive className="w-5 h-5 text-purple-300" />
+                <h3 className="font-bold text-sm">견적건 보관함 이동 (보류/이력 관리)</h3>
+              </div>
+              <button
+                onClick={() => setDetailArchiveModalOpen(false)}
+                className="text-purple-300 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">
+                  보관 사유 선택
+                </label>
+                <div className="space-y-2">
+                  {['일정/품의 지연', 'Rev 도면 변경 대기', '견적 완료 이력 보관', '고객사 요청 보류', 'CUSTOM'].map((option) => (
+                    <label
+                      key={option}
+                      className={`flex items-center space-x-2.5 p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
+                        detailArchiveReasonType === option
+                          ? 'bg-purple-50 border-purple-400 text-purple-900 font-bold'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="detailArchiveReason"
+                        checked={detailArchiveReasonType === option}
+                        onChange={() => setDetailArchiveReasonType(option)}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>{option === 'CUSTOM' ? '기타 사유 직접 입력' : option}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {detailArchiveReasonType === 'CUSTOM' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">직접 입력</label>
+                  <input
+                    type="text"
+                    value={detailArchiveCustomReason}
+                    onChange={(e) => setDetailArchiveCustomReason(e.target.value)}
+                    placeholder="보관 사유를 입력하세요 (예: 11월 재검토 등)"
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+              )}
+
+              <div className="p-3 bg-slate-50 rounded border border-slate-200 text-slate-600 text-[11px] leading-relaxed">
+                💡 <strong>안내:</strong> 보관함으로 이동된 건은 메인 진행 목록에서 숨겨지며, 언제든 상단 <strong>‘작업 활성 상태로 복원’</strong>을 통해 다시 진행할 수 있습니다.
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setDetailArchiveModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleArchiveCase}
+                disabled={detailLifecycleLoading}
+                className="px-4 py-1.5 text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white rounded shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>{detailLifecycleLoading ? '처리 중...' : '보관함으로 이동'}</span>
+              </button>
             </div>
           </div>
         </div>

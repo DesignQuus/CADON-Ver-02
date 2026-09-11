@@ -225,21 +225,21 @@ export async function processCadFilePipeline(
   const tempStrucJson = path.join(tempDir, `struc_${parseRunId}.json`);
   fs.writeFileSync(tempStrucJson, JSON.stringify(structureResult));
 
-  // Save Drawings to DB
-  db.prepare('DELETE FROM drawings WHERE quotation_case_id = ?').run(quotationCaseId);
+  // Save Drawings to DB (source_file_id 기반 격리 저장 - 다른 도면 데이터 보존)
+  db.prepare('DELETE FROM drawings WHERE quotation_case_id = ? AND (source_file_id = ? OR source_file_id IS NULL)').run(quotationCaseId, sourceFileId);
   db.prepare('DELETE FROM drawing_relationships WHERE quotation_case_id = ?').run(quotationCaseId);
 
   const insertDwg = db.prepare(`
     INSERT INTO drawings (
-      id, quotation_case_id, drawing_index, drawing_no_raw, drawing_no_normalized,
+      id, quotation_case_id, source_file_id, drawing_index, drawing_no_raw, drawing_no_normalized,
       drawing_name_raw, drawing_name_normalized, revision, material, scale,
       drawing_type, frame_bbox_json, title_block_bbox_json, confidence_score, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const d of structureResult.drawings) {
     insertDwg.run(
-      `dwg_${quotationCaseId}_${d.drawing_index}`, quotationCaseId, d.drawing_index,
+      `dwg_${sourceFileId}_${d.drawing_index}`, quotationCaseId, sourceFileId, d.drawing_index,
       d.drawing_no_raw, d.drawing_no_normalized, d.drawing_name_raw,
       d.drawing_name_normalized, d.revision, d.material, d.scale,
       d.drawing_type, JSON.stringify(d.frame_bbox), JSON.stringify(d.title_block_bbox),
@@ -266,16 +266,16 @@ export async function processCadFilePipeline(
   const tempBomAreaJson = path.join(tempDir, `bom_area_${parseRunId}.json`);
   fs.writeFileSync(tempBomAreaJson, JSON.stringify(bomAreaResult));
 
-  db.prepare('DELETE FROM bom_areas WHERE quotation_case_id = ?').run(quotationCaseId);
+  db.prepare('DELETE FROM bom_areas WHERE quotation_case_id = ? AND (source_file_id = ? OR source_file_id IS NULL)').run(quotationCaseId, sourceFileId);
   const insertBomArea = db.prepare(`
     INSERT INTO bom_areas (
-      id, quotation_case_id, drawing_no, table_type, bbox_json, confidence_score, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      id, quotation_case_id, source_file_id, drawing_no, table_type, bbox_json, confidence_score, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (let i = 0; i < bomAreaResult.bom_areas.length; i++) {
     const ba = bomAreaResult.bom_areas[i];
     insertBomArea.run(
-      `ba_${quotationCaseId}_${i+1}`, quotationCaseId, ba.drawing_no,
+      `ba_${sourceFileId}_${i+1}`, quotationCaseId, sourceFileId, ba.drawing_no,
       ba.table_type, JSON.stringify(ba.bbox), ba.confidence_score, ba.status, now
     );
   }
@@ -285,18 +285,18 @@ export async function processCadFilePipeline(
   const tempRawBomJson = path.join(tempDir, `raw_bom_${parseRunId}.json`);
   fs.writeFileSync(tempRawBomJson, JSON.stringify(rawBomResult));
 
-  db.prepare('DELETE FROM raw_bom_items WHERE quotation_case_id = ?').run(quotationCaseId);
+  db.prepare('DELETE FROM raw_bom_items WHERE quotation_case_id = ? AND (source_file_id = ? OR source_file_id IS NULL)').run(quotationCaseId, sourceFileId);
   const insertRawBom = db.prepare(`
     INSERT INTO raw_bom_items (
-      id, quotation_case_id, drawing_no, row_index, item_no_raw, part_no_raw,
+      id, quotation_case_id, source_file_id, drawing_no, row_index, item_no_raw, part_no_raw,
       name_raw, specification_raw, material_raw, quantity_raw, quantity_numeric,
       unit_raw, remark_raw, source_handles_json, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (let idx = 0; idx < rawBomResult.raw_bom_items.length; idx++) {
     const rb = rawBomResult.raw_bom_items[idx];
     insertRawBom.run(
-      `rb_${quotationCaseId}_${idx + 1}`, quotationCaseId, rb.drawing_no,
+      `rb_${sourceFileId}_${idx + 1}`, quotationCaseId, sourceFileId, rb.drawing_no,
       rb.row_index, rb.item_no_raw, rb.part_no_raw, rb.name_raw,
       rb.specification_raw, rb.material_raw, rb.quantity_raw,
       rb.quantity_numeric, rb.unit_raw, rb.remark_raw,

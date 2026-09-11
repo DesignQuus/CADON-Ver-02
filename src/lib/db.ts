@@ -35,6 +35,8 @@ db.pragma('foreign_keys = ON');
 
 // Initialize schema and seed data
 export function initializeDatabase() {
+  db.pragma('foreign_keys = OFF');
+  try {
   db.exec(`
     -- 1. Users & Roles (PROMPT 01)
     CREATE TABLE IF NOT EXISTS users (
@@ -108,6 +110,21 @@ export function initializeDatabase() {
   } catch (e) {
     // Ignore if columns already exist
   }
+  try {
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'ACTIVE'").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN archived_at TEXT").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN archive_reason TEXT").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN trashed_at TEXT").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE quotation_cases ADD COLUMN trashed_by_user_id TEXT").run();
+  } catch (e) {}
 
   db.exec(`
     -- 5. Uploaded Files (PROMPT 03, 18)
@@ -606,6 +623,23 @@ export function initializeDatabase() {
   try { db.exec('ALTER TABLE normalized_bom_items ADD COLUMN is_quote_included INTEGER NOT NULL DEFAULT 1;'); } catch {}
   try { db.exec('ALTER TABLE normalized_bom_items ADD COLUMN exclude_reason TEXT;'); } catch {}
 
+  // Multi-Drawing Isolation Migrations (source_file_id)
+  try { db.exec('ALTER TABLE drawings ADD COLUMN source_file_id TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE bom_areas ADD COLUMN source_file_id TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE raw_bom_items ADD COLUMN source_file_id TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE normalized_bom_items ADD COLUMN source_file_id TEXT;'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_drawings_file ON drawings(source_file_id);'); } catch {}
+
+  // Dynamic Column Migrations for Self-Learning Price Knowledge Pool
+  try { db.exec('ALTER TABLE manual_price_pool ADD COLUMN company_id TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE manual_price_pool ADD COLUMN standard_name TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE manual_price_pool ADD COLUMN standard_material TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE manual_price_pool ADD COLUMN approval_count INTEGER NOT NULL DEFAULT 1;'); } catch {}
+  try { db.exec('ALTER TABLE manual_price_pool ADD COLUMN last_used_at TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE manual_price_pool ADD COLUMN source TEXT NOT NULL DEFAULT "MANUAL";'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_mpp_name ON manual_price_pool(item_name);'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_mpp_company ON manual_price_pool(company_id);'); } catch {}
+
   // Ensure 5 demo users (김견적, 이견적, 최견적, 송견적, 박견적) and admin are registered
   const now = new Date().toISOString();
   const defaultPassHash = bcrypt.hashSync('Cadon1234!@', 10);
@@ -630,12 +664,13 @@ export function initializeDatabase() {
         is_active = 1
     `).run(u.id, u.login_id, defaultPassHash, u.name, u.role, now, now);
 
-    // Grant company access to all customer companies
-    for (const compId of ['comp_sechang', 'comp_001', 'comp_002', 'comp_003', 'comp_004']) {
+    // Grant company access to all existing customer companies
+    const activeCompanies = db.prepare('SELECT id FROM companies WHERE is_active = 1').all() as any[];
+    for (const comp of activeCompanies) {
       db.prepare(`
         INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
         VALUES (?, ?, 'MANAGER', 1)
-      `).run(u.id, compId);
+      `).run(u.id, comp.id);
     }
   }
 
@@ -650,11 +685,12 @@ export function initializeDatabase() {
       is_active = 1
   `).run('usr_admin', 'admin', adminPassHash, '시스템 최고관리자', 'SUPER_ADMIN', now, now);
 
-  for (const compId of ['comp_sechang', 'comp_001', 'comp_002', 'comp_003', 'comp_004']) {
+  const activeCompaniesForAdmin = db.prepare('SELECT id FROM companies WHERE is_active = 1').all() as any[];
+  for (const comp of activeCompaniesForAdmin) {
     db.prepare(`
       INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
       VALUES ('usr_admin', ?, 'MANAGER', 1)
-    `).run(compId);
+    `).run(comp.id);
   }
 
   // Seed Global Approval Settings
@@ -781,12 +817,18 @@ export function initializeDatabase() {
       { id: 'mpp_007', name: 'PINION SHAFT', spec: 'M2.5 Z18', mat: 'SCM440', price: 42000, remark: '기어 치절 및 고주파 열처리 단가' }
     ];
 
+    const defaultCase = db.prepare('SELECT id FROM quotation_cases LIMIT 1').get() as any;
+    const targetCaseId = defaultCase?.id || 'case_1788656891118';
+
     for (const mpp of initialManualPrices) {
       db.prepare(`
         INSERT INTO manual_price_pool (id, item_name, specification, material, unit_price, remark, quotation_case_id, created_by_user_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(mpp.id, mpp.name, mpp.spec, mpp.mat, mpp.price, mpp.remark, 'case_001', 'usr_admin', now);
+      `).run(mpp.id, mpp.name, mpp.spec, mpp.mat, mpp.price, mpp.remark, targetCaseId, 'usr_admin', now);
     }
+  }
+  } finally {
+    db.pragma('foreign_keys = ON');
   }
 }
 

@@ -58,6 +58,9 @@ export async function DELETE(
       // Delete the file and all its derived files
       db.prepare(`DELETE FROM uploaded_files WHERE id IN (${placeholders})`).run(...fileIdsToDelete);
 
+      // Delete drawings associated with the deleted files
+      db.prepare(`DELETE FROM drawings WHERE source_file_id IN (${placeholders})`).run(...fileIdsToDelete);
+
       if (shouldWipeAllCaseData) {
         // No other source drawings exist: Wipe all remaining orphaned records
         db.prepare('DELETE FROM drawings WHERE quotation_case_id = ?').run(id);

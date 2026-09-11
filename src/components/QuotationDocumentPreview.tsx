@@ -44,6 +44,7 @@ interface QuotationDocumentPreviewProps {
   onExportExcel: (quoteId: string, customOptions?: any) => void;
   exportResult?: any;
   actionLoading?: boolean;
+  onDownloadZip?: () => void;
 }
 
 export default function QuotationDocumentPreview({
@@ -52,7 +53,8 @@ export default function QuotationDocumentPreview({
   caseData,
   onExportExcel,
   exportResult,
-  actionLoading = false
+  actionLoading = false,
+  onDownloadZip
 }: QuotationDocumentPreviewProps) {
   // A4 Paper Zoom Scaling
   const [zoomScale, setZoomScale] = useState<number>(100);
@@ -219,6 +221,18 @@ export default function QuotationDocumentPreview({
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>{actionLoading ? '엑셀 생성 중...' : 'Excel 다운로드'}</span>
           </button>
+
+          {/* Primary Action 1-B: Download Entire Project ZIP Package */}
+          {onDownloadZip && (
+            <button
+              onClick={onDownloadZip}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer transition-colors"
+              title="도면(DWG/DXF), 표제란, BOM 및 프로젝트 산출물 전체를 단일 압축 ZIP 파일로 내보냅니다."
+            >
+              <Download className="w-3.5 h-3.5 text-slate-300" />
+              <span>전체 패키지(ZIP) 다운로드</span>
+            </button>
+          )}
 
           {/* Primary Action 2: PDF Export / Print */}
           <button

@@ -60,6 +60,9 @@ __pycache__/
 # Development & Scratch
 scratch/
 *.log
+*.bmp
+test_*.png
+*.tmp
 
 # OS metadata
 .DS_Store

@@ -142,7 +142,8 @@ def convert_dwg_to_dxf(dwg_path: str, output_dxf_path: str, timeout_sec: int = 1
     raw_output_dxf = os.path.join(temp_dir, "raw_output.dxf")
     
     try:
-        cmd = [converter_exe, "--as", "r2000", "-y", "-o", raw_output_dxf, dwg_path]
+        # Do not force --as r2000 downgrade! Preserving modern blocks (r2018/native) keeps blocks 2 & 3 intact.
+        cmd = [converter_exe, "-y", "-o", raw_output_dxf, dwg_path]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec)
         
         # Verify source DWG was not modified

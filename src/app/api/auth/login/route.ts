@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '아이디 또는 비밀번호가 올바르지 않습니다.' }, { status: 401 });
     }
 
-    await createSession(session);
+    const token = await createSession(session);
 
     // Audit log: LOGIN
     await recordActivity(req, session, {
@@ -22,7 +22,16 @@ export async function POST(req: NextRequest) {
       details: `${session.name} (${session.loginId}) 담당자 시스템 접속 로그인 완료`
     });
 
-    return NextResponse.json({ success: true, user: session });
+    const res = NextResponse.json({ success: true, user: session, token });
+    res.cookies.set('cadon_session', token, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7
+    });
+
+    return res;
   } catch (error: any) {
     return NextResponse.json({ error: error.message || '서버 오류' }, { status: 500 });
   }

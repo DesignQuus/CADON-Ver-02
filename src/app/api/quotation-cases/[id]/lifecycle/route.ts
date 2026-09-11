@@ -1,0 +1,168 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+import { recordActivity } from '@/lib/audit';
+import { resolveStoragePath, getStorageSubdir } from '@/lib/storage';
+import fs from 'fs';
+import path from 'path';
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const qc = db.prepare('SELECT * FROM quotation_cases WHERE id = ?').get(id) as any;
+  if (!qc) {
+    return NextResponse.json({ error: '견적건을 찾을 수 없습니다.' }, { status: 404 });
+  }
+
+  const isOwner = session.userId === qc.created_by_user_id;
+  const isSuperAdmin = session.role === 'SUPER_ADMIN';
+
+  try {
+    const { action, reason } = await req.json();
+    const now = new Date().toISOString();
+
+    if (action === 'ARCHIVE') {
+      const archiveReason = reason || '일정 보류';
+      db.prepare(`
+        UPDATE quotation_cases
+        SET lifecycle_status = 'ARCHIVED',
+            archived_at = ?,
+            archive_reason = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, archiveReason, now, id);
+
+      await recordActivity(req, session, {
+        activityType: 'CASE_ARCHIVE',
+        quotationCaseId: id,
+        caseName: qc.case_name,
+        details: `견적건 보관함 이동 [사유: ]`
+      });
+
+      return NextResponse.json({ success: true, message: '보관함으로 이동되었습니다.' });
+    }
+
+    if (action === 'TRASH') {
+      db.prepare(`
+        UPDATE quotation_cases
+        SET lifecycle_status = 'TRASHED',
+            trashed_at = ?,
+            trashed_by_user_id = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, session.userId, now, id);
+
+      await recordActivity(req, session, {
+        activityType: 'CASE_TRASH',
+        quotationCaseId: id,
+        caseName: qc.case_name,
+        details: '견적건 휴지통으로 이동'
+      });
+
+      return NextResponse.json({ success: true, message: '휴지통으로 이동되었습니다.' });
+    }
+
+    if (action === 'RESTORE') {
+      db.prepare(`
+        UPDATE quotation_cases
+        SET lifecycle_status = 'ACTIVE',
+            archived_at = NULL,
+            archive_reason = NULL,
+            trashed_at = NULL,
+            trashed_by_user_id = NULL,
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, id);
+
+      await recordActivity(req, session, {
+        activityType: 'CASE_RESTORE',
+        quotationCaseId: id,
+        caseName: qc.case_name,
+        details: '견적건 작업 활성 상태로 복원'
+      });
+
+      return NextResponse.json({ success: true, message: '견적건이 복원되었습니다.' });
+    }
+
+    if (action === 'PERMANENT_DELETE') {
+      if (!isSuperAdmin && !isOwner) {
+        return NextResponse.json({ error: '영구 삭제 권한이 없습니다 (담당자 또는 최고관리자 전용).' }, { status: 403 });
+      }
+
+      const files = db.prepare('SELECT * FROM uploaded_files WHERE quotation_case_id = ?').all(id) as any[];
+
+      const deleteTx = db.transaction(() => {
+        const fileIds = files.map(f => f.id);
+        if (fileIds.length > 0) {
+          const placeholders = fileIds.map(() => '?').join(',');
+          const parseRuns = db.prepare(`SELECT id FROM cad_parse_runs WHERE source_file_id IN ()`).all(...fileIds) as any[];
+          for (const pr of parseRuns) {
+            db.prepare('DELETE FROM cad_objects WHERE parse_run_id = ?').run(pr.id);
+            db.prepare('DELETE FROM cad_parse_runs WHERE id = ?').run(pr.id);
+          }
+        }
+
+        db.prepare('DELETE FROM drawings WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM drawing_relationships WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM bom_areas WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM raw_bom_items WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM flattened_bom_items WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM normalized_bom_items WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM master_candidates WHERE normalized_item_id LIKE ?').run(`%%`);
+        db.prepare('DELETE FROM bom_approval_records WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM final_bom_items WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM quotes WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM uploaded_files WHERE quotation_case_id = ?').run(id);
+        db.prepare('DELETE FROM quotation_cases WHERE id = ?').run(id);
+      });
+
+      deleteTx();
+
+      for (const f of files) {
+        if (f.storage_path) {
+          try {
+            const absPath = resolveStoragePath(f.storage_path);
+            if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+          } catch {}
+        }
+      }
+
+      const derivedDirs = [
+        getStorageSubdir('derived'),
+        path.join(process.cwd(), 'storage', 'derived'),
+        path.join(process.env.APPDATA || '', 'egdesk', 'user-data', 'development', 'projects', '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f', 'storage', 'derived')
+      ];
+
+      for (const dDir of derivedDirs) {
+        if (fs.existsSync(dDir)) {
+          try {
+            const patternFiles = fs.readdirSync(dDir).filter(fn => fn.includes(id));
+            for (const fn of patternFiles) {
+              try { fs.unlinkSync(path.join(dDir, fn)); } catch {}
+            }
+          } catch {}
+        }
+      }
+
+      await recordActivity(req, session, {
+        activityType: 'CASE_PERMANENT_DELETE',
+        quotationCaseId: id,
+        caseName: qc.case_name,
+        details: `견적건 완전 영구 삭제: [] `
+      });
+
+      return NextResponse.json({ success: true, message: '영구 삭제되었습니다.' });
+    }
+
+    return NextResponse.json({ error: '알 수 없는 요청 액션입니다.' }, { status: 400 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || '처리 중 오류 발생' }, { status: 500 });
+  }
+}

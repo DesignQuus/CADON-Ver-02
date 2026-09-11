@@ -137,7 +137,18 @@ def build_multilevel_bom(raw_bom_data: dict, structure_data: dict, root_order_qt
         key = raw_part_no if (raw_part_no and not re.match(r'^\d+$', raw_part_no)) else raw_name
         
         if key in flattened_map:
-            flattened_map[key]["total_quantity"] += effective_qty
+            # SINGLE SOURCE OF TRUTH: If item was initialized from Title Block,
+            # bind the quantity directly to the BOM Table's authoritative quantity (effective_qty)
+            # instead of blindly adding (total_quantity += effective_qty) to avoid double counting!
+            if flattened_map[key].get("source") == "TITLE_BLOCK":
+                flattened_map[key]["total_quantity"] = effective_qty
+                flattened_map[key]["source"] = "BOM_TABLE_MASTER"
+                flattened_map[key]["is_dedup_merged"] = True
+                flattened_map[key]["bom_table_qty"] = effective_qty
+            else:
+                # If part appears across multiple different sub-assemblies, roll up sum
+                flattened_map[key]["total_quantity"] += effective_qty
+                
             if dwg_no and dwg_no not in flattened_map[key]["source_drawings"]:
                 flattened_map[key]["source_drawings"].append(dwg_no)
         else:
@@ -149,7 +160,8 @@ def build_multilevel_bom(raw_bom_data: dict, structure_data: dict, root_order_qt
                 "material": item.get("material_raw", "SS400"),
                 "unit": item.get("unit_raw", "EA"),
                 "total_quantity": effective_qty,
-                "drawing_type": "SUB_ITEM",
+                "drawing_type": "COMMERCIAL" if any(c in raw_name.upper() for c in ["LM", "BEARING", "BOLT", "NUT", "SENSOR", "CYLINDER"]) else "SUB_ITEM",
+                "source": "BOM_TABLE",
                 "source_drawings": [dwg_no] if dwg_no else [],
                 "source_item_ids": [item.get("id")]
             }

@@ -9,3 +9,6 @@ EGDesk MCP/API runs at http://localhost:8080.
 
 See `.agents/rules/egdesk-dev-context.md` for full details.
 <!-- END:egdesk-dev-context -->
+
+## 언어 설정 (Language Preference)
+- 사용자와의 모든 대화, 설명 및 응답은 반드시 **한국어(한글)**로 작성합니다.

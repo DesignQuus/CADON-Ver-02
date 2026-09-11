@@ -98,8 +98,7 @@ export default function LoginPage() {
     setError('');
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeLogin = async (loginId: string, pass: string) => {
     setError('');
     setLoading(true);
 
@@ -107,7 +106,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loginId: selectedUser.loginId, password })
+        body: JSON.stringify({ loginId, password: pass })
       });
 
       const data = await res.json();
@@ -115,19 +114,28 @@ export default function LoginPage() {
         throw new Error(data.error || '로그인에 실패했습니다. 비밀번호를 확인해주세요.');
       }
 
-      // Redirect to main cases page or previous page
+      // Cache user and token in localStorage
       if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('cadon_user', JSON.stringify(data.user));
+          if (data.token) {
+            localStorage.setItem('cadon_token', data.token);
+          }
+        } catch {}
+
         const params = new URLSearchParams(window.location.search);
         const redirectUrl = params.get('redirect') || '/cases';
-        window.location.href = redirectUrl;
-      } else {
-        router.push('/cases');
+        window.location.replace(redirectUrl);
       }
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    executeLogin(selectedUser.loginId, password);
   };
 
   const handleAdminQuickSelect = () => {
@@ -166,17 +174,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Direct link to main dashboard */}
-      <div className="mb-4">
-        <Link
-          href="/cases"
-          className="inline-flex items-center space-x-1.5 px-4 py-2 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-bold transition-all shadow-2xs group cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:-translate-x-0.5 transition-transform" />
-          <span>← 로그인 건너뛰고 메인 화면(견적의뢰 관리)으로 이동</span>
-        </Link>
-      </div>
-
       {/* Main Login Card */}
       <div className="bg-white rounded-3xl shadow-lg border border-slate-200/80 p-6 sm:p-8 max-w-2xl w-full">
         {/* Step 1: Select User */}
@@ -203,9 +200,8 @@ export default function LoginPage() {
             {DEMO_USERS.map((u) => {
               const isSelected = selectedUser.loginId === u.loginId;
               return (
-                <button
+                <div
                   key={u.id}
-                  type="button"
                   onClick={() => handleSelectUser(u)}
                   className={`p-3 rounded-2xl text-left border-2 transition-all relative cursor-pointer flex flex-col justify-between ${
                     isSelected
@@ -225,7 +221,22 @@ export default function LoginPage() {
                   <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400 font-mono truncate">
                     {u.department}
                   </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectUser(u);
+                      executeLogin(u.loginId, u.defaultPass);
+                    }}
+                    className={`mt-2 py-1 px-1.5 rounded-lg text-[10px] font-extrabold text-center transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-xs'
+                        : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-200'
+                    }`}
+                  >
+                    ⚡ 즉시 로그인
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -294,7 +305,8 @@ export default function LoginPage() {
           </div>
 
           <button
-            type="submit"
+            type="button"
+            onClick={(e) => handleLogin(e)}
             disabled={loading}
             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
           >
@@ -311,16 +323,10 @@ export default function LoginPage() {
           </span>
         </div>
 
-        {/* Bottom Quick Return */}
+        {/* Bottom System Info */}
         <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-          <Link
-            href="/cases"
-            className="text-xs text-slate-500 hover:text-blue-600 flex items-center space-x-1 font-medium transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>로그인하지 않고 메인 견적의뢰 목록 바로가기</span>
-          </Link>
-          <span className="text-[11px] text-slate-400">CADON-BOM AI Ver-02</span>
+          <span className="text-xs text-slate-400">보안 엔터프라이즈 견적 시스템</span>
+          <span className="text-[11px] text-slate-400 font-semibold">CADON-BOM AI Ver-02</span>
         </div>
       </div>
 

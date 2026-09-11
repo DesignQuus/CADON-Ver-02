@@ -349,26 +349,24 @@ export default function AuditLogsPage() {
 
         {/* Pagination Bar */}
         {totalPages > 1 && (
-          <div className="py-3 px-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <div>
+          <div className="py-3 px-4 border-t border-slate-100 flex items-center justify-center space-x-4 text-xs text-slate-500">
+            <button
+              onClick={() => fetchLogs(page - 1)}
+              disabled={page <= 1}
+              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md disabled:opacity-40 cursor-pointer transition-colors"
+            >
+              이전
+            </button>
+            <div className="font-medium">
               페이지 <span className="font-bold text-slate-800">{page}</span> / {totalPages}
             </div>
-            <div className="flex items-center space-x-1.5">
-              <button
-                onClick={() => fetchLogs(page - 1)}
-                disabled={page <= 1}
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md disabled:opacity-40 cursor-pointer"
-              >
-                이전
-              </button>
-              <button
-                onClick={() => fetchLogs(page + 1)}
-                disabled={page >= totalPages}
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md disabled:opacity-40 cursor-pointer"
-              >
-                다음
-              </button>
-            </div>
+            <button
+              onClick={() => fetchLogs(page + 1)}
+              disabled={page >= totalPages}
+              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md disabled:opacity-40 cursor-pointer transition-colors"
+            >
+              다음
+            </button>
           </div>
         )}
       </div>

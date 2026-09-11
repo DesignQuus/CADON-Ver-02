@@ -87,6 +87,30 @@ export async function POST(
         }
       }
 
+      // 2. Search Self-Learning Knowledge Pool (manual_price_pool)
+      if (unitPrice === 0 && item.final_name) {
+        const normFinalName = item.final_name.toUpperCase().trim();
+        const learnedPrice = db.prepare(`
+          SELECT * FROM manual_price_pool
+          WHERE (
+              UPPER(TRIM(item_name)) = ? 
+              OR UPPER(TRIM(COALESCE(standard_name, ''))) = ?
+            )
+            AND unit_price > 0
+          ORDER BY 
+            CASE WHEN company_id = ? THEN 1 ELSE 2 END,
+            approval_count DESC,
+            last_used_at DESC
+          LIMIT 1
+        `).get(normFinalName, normFinalName, qc.company_id) as any;
+
+        if (learnedPrice) {
+          unitPrice = learnedPrice.unit_price;
+          priceSource = 'MANUAL_PRICE';
+          priceStatus = 'READY';
+        }
+      }
+
       const qty = item.final_quantity || 1.0;
       const amount = Math.round(qty * unitPrice);
       const isIncluded = item.is_quote_included !== 0 ? 1 : 0;

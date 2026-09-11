@@ -25,7 +25,9 @@ export type WorkflowTab =
   | 'ANALYZED'          // 03. AI 분석완료 / 단가 매칭
   | 'READY_FOR_QUOTE'   // 04. 견적 준비 완료
   | 'PRIVATE_APPROVAL'  // 04. 결재 대기 (SUPER_ADMIN)
-  | 'SECURE_VAULT';     // 04/05. 보안 견적함 (SUPER_ADMIN)
+  | 'SECURE_VAULT'      // 04/05. 보안 견적함 (SUPER_ADMIN)
+  | 'ARCHIVED'          // 📦 보관함
+  | 'TRASHED';          // 🗑️ 휴지통
 
 interface CaseWorkflowSidebarProps {
   selectedTab: WorkflowTab;
@@ -37,6 +39,8 @@ interface CaseWorkflowSidebarProps {
     ready: number;
     pendingApproval: number;
     secureVault: number;
+    archived?: number;
+    trashed?: number;
   };
   user: {
     userId?: string;
@@ -346,6 +350,41 @@ export default function CaseWorkflowSidebar({
               </span>
               <DownloadCloud className="w-4 h-4 text-emerald-600 group-hover:translate-y-0.5 transition-transform" />
             </button>
+
+            {/* Lifecycle Quick Nav: 보관함 & 휴지통 */}
+            <div className="grid grid-cols-2 gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => onSelectTab('ARCHIVED')}
+                className={`w-full px-2 py-1.5 rounded text-[11px] font-bold transition-all flex items-center justify-between border cursor-pointer ${
+                  selectedTab === 'ARCHIVED'
+                    ? 'bg-purple-600 text-white border-purple-700 shadow-2xs'
+                    : 'bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200'
+                }`}
+                title="보류/이력 건 보관함"
+              >
+                <span>📦 보관함</span>
+                <span className={`px-1.5 py-0.2 rounded text-[10px] ${selectedTab === 'ARCHIVED' ? 'bg-purple-800 text-white' : 'bg-purple-200 text-purple-900'}`}>
+                  {counts.archived ?? 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectTab('TRASHED')}
+                className={`w-full px-2 py-1.5 rounded text-[11px] font-bold transition-all flex items-center justify-between border cursor-pointer ${
+                  selectedTab === 'TRASHED'
+                    ? 'bg-rose-600 text-white border-rose-700 shadow-2xs'
+                    : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200'
+                }`}
+                title="삭제된 건 휴지통"
+              >
+                <span>🗑️ 휴지통</span>
+                <span className={`px-1.5 py-0.2 rounded text-[10px] ${selectedTab === 'TRASHED' ? 'bg-rose-800 text-white' : 'bg-rose-200 text-rose-900'}`}>
+                  {counts.trashed ?? 0}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

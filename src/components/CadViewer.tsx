@@ -111,6 +111,7 @@ interface CadViewerProps {
   isAnalyzing?: boolean;
   allFiles?: any[];
   onSelectFile?: (fileId: string) => void;
+  onBomUpdated?: () => Promise<void> | void;
 }
 
 export default function CadViewer({
@@ -133,7 +134,8 @@ export default function CadViewer({
   onStartAnalysis,
   isAnalyzing = false,
   allFiles = [],
-  onSelectFile
+  onSelectFile,
+  onBomUpdated
 }: CadViewerProps) {
   // Mode switcher: 'CAD' (2D Vector Viewer) vs 'SHEET' (Full-width Excel Grid)
   const [viewMode, setViewMode] = useState<'CAD' | 'SHEET'>('CAD');
@@ -153,15 +155,14 @@ export default function CadViewer({
   const [highlightDrawingIds, setHighlightDrawingIds] = useState<string[]>([]);
   const [reasonMenuDwgId, setReasonMenuDwgId] = useState<string | null>(null);
 
-  // External CAD launch & Archiving states
+  // External CAD launch states
   const [openingCad, setOpeningCad] = useState(false);
   const [openingFastView, setOpeningFastView] = useState(false);
-  const [archiving, setArchiving] = useState(false);
   const [cadStatusMsg, setCadStatusMsg] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   // Settings Modal states
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showStatsModal, setShowStatsModal] = useState(false);
   const [fastviewPathInput, setFastviewPathInput] = useState('');
   const [autocadPathInput, setAutocadPathInput] = useState('');
   const [detectedFastviewList, setDetectedFastviewList] = useState<string[]>([]);
@@ -1178,8 +1179,9 @@ export default function CadViewer({
           min_x: targetBox.min_x,
           min_y: targetBox.min_y,
           max_x: targetBox.max_x,
-          max_y: targetBox.max_y
-        });
+          max_y: targetBox.max_y,
+          _ts: Date.now()
+        } as any);
       }
     } catch {}
 
@@ -1213,8 +1215,9 @@ export default function CadViewer({
         min_x: minX - padX,
         min_y: minY - padY,
         max_x: maxX + padX,
-        max_y: maxY + padY
-      });
+        max_y: maxY + padY,
+        _ts: Date.now()
+      } as any);
       setSelectedDrawingIdx(-1);
       setHighlightDrawingIds(group.map(g => g.id));
       setViewMode('CAD');
@@ -1500,86 +1503,7 @@ export default function CadViewer({
         </div>
       )}
 
-      {/* 📊 System Stats Modal */}
-      {showStatsModal && (
-        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-xl bg-fuchsia-600/20 border border-fuchsia-500/40 flex items-center justify-center text-fuchsia-400">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-sm">시스템 종합 통계 (최고관리자용)</h3>
-                  <p className="text-[11px] text-slate-400">전체 견적 담당자 활동 및 시스템 리소스 현황</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowStatsModal(false)}
-                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
-                  <div className="text-[11px] text-slate-400 mb-1">월간 도면 분석량</div>
-                  <div className="text-2xl font-black text-white flex items-end gap-1.5">
-                    12,458 <span className="text-sm font-bold text-emerald-400 mb-0.5">+15%</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">지난 달 대비 상승</div>
-                </div>
-                <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl">
-                  <div className="text-[11px] text-slate-400 mb-1">진행 중인 견적 프로젝트</div>
-                  <div className="text-2xl font-black text-white flex items-end gap-1.5">
-                    29 <span className="text-sm font-bold text-blue-400 mb-0.5">건</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">담당자 5명 합계</div>
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between items-end mb-1">
-                  <span className="font-bold text-slate-300">서버 스토리지 및 자원 사용률</span>
-                  <span className="font-mono text-cyan-400 font-bold">78%</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
-                  <div className="bg-cyan-500 h-full w-[45%]" title="DWG 원본 보관"></div>
-                  <div className="bg-blue-500 h-full w-[20%]" title="파생 데이터 (DXF/JSON)"></div>
-                  <div className="bg-amber-500 h-full w-[13%]" title="시스템 로그"></div>
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                  <span>사용중: 1.56 TB</span>
-                  <span>전체: 2.0 TB</span>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <div className="p-3 bg-fuchsia-950/30 border border-fuchsia-900/50 rounded-xl">
-                  <div className="text-[11px] text-fuchsia-300/80 mb-0.5">월간 누적 견적 금액 요약</div>
-                  <div className="text-lg font-bold text-fuchsia-100 font-mono">
-                    ₩ 4,520,150,000
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end px-6 py-4 border-t border-slate-800 bg-slate-950 shrink-0">
-              <button
-                onClick={() => setShowStatsModal(false)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
-              >
-                확인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Top Professional Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-800 text-xs">
@@ -1656,21 +1580,8 @@ export default function CadViewer({
 
         {/* Right: Actions, Dropdown & Controls */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {/* Action Group: DWG FastView / AutoCAD / Settings / Archive / Export */}
+          {/* Action Group: AutoCAD & CAD Settings */}
           <div className="flex items-center space-x-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80">
-            {/* 무료 CAD 뷰어 1-Click Launch Button */}
-            {caseId && (
-              <button
-                onClick={handleOpenFreeViewer}
-                disabled={openingFastView}
-                className="px-2.5 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-950/50 hover:bg-cyan-900/80 text-cyan-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 shadow-2xs"
-                title="현재 도면을 PC에 설치된 무료 CAD 뷰어(FastView, TrueView 등)에서 직접 열기"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span className="whitespace-nowrap">{openingFastView ? '열기 중...' : '무료뷰어 연결'}</span>
-              </button>
-            )}
-
             {/* AutoCAD 1-Click Launch Button */}
             {caseId && (
               <button
@@ -1688,58 +1599,11 @@ export default function CadViewer({
             <button
               onClick={handleOpenSettingsModal}
               className="px-2.5 py-1.5 rounded-lg border border-indigo-500/50 bg-indigo-950/70 hover:bg-indigo-900 text-indigo-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
-              title="CAD 프로그램 실행 파일 경로 설정 (DWG FastView / AutoCAD)"
+              title="CAD 프로그램 실행 파일 경로 설정 (AutoCAD 등)"
             >
               <Settings className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <span className="whitespace-nowrap">CAD 설정</span>
             </button>
-
-            {/* 📊 System Stats Modal Button */}
-            <button
-              onClick={() => setShowStatsModal(true)}
-              className="px-2.5 py-1.5 rounded-lg border border-fuchsia-500/50 bg-fuchsia-950/70 hover:bg-fuchsia-900 text-fuchsia-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
-              title="최고관리자용 시스템 통계 요약 보기"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" />
-              <span className="whitespace-nowrap">시스템 통계</span>
-            </button>
-
-            {/* 📁 Open Containing Desktop Folder in Windows Explorer */}
-            {caseId && (
-              <button
-                onClick={handleOpenFolder}
-                className="px-2.5 py-1.5 rounded-lg border border-teal-500/50 bg-teal-950/70 hover:bg-teal-900 text-teal-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
-                title="바탕화면(Desktop)의 원본 DWG 도면 파일 위치를 윈도우 탐색기로 즉시 열기"
-              >
-                <FolderOpen className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                <span className="whitespace-nowrap">바탕화면 도면 열기</span>
-              </button>
-            )}
-
-            {/* Archive Snapshot Button (별도 보관) */}
-            {caseId && (
-              <button
-                onClick={handleArchiveSnapshot}
-                disabled={archiving}
-                className="px-2.5 py-1.5 rounded-lg border border-purple-500/40 bg-purple-950/50 hover:bg-purple-900/80 text-purple-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
-                title="현재 도면 및 다단계 BOM 분석 결과를 버전 스냅샷으로 영구 보관"
-              >
-                <Archive className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                <span className="whitespace-nowrap">{archiving ? '보관 중...' : '데이터 보관'}</span>
-              </button>
-            )}
-
-            {/* Export ZIP Package Button */}
-            {caseId && (
-              <button
-                onClick={handleDownloadZip}
-                className="px-2.5 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/50 hover:bg-emerald-900/80 text-emerald-200 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0"
-                title="원본 DWG + 변환 DXF + 표제란 + BOM 분석 결과 전체를 보관용 ZIP으로 다운로드"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="whitespace-nowrap">ZIP 다운로드</span>
-              </button>
-            )}
           </div>
 
           {/* CAD-specific Controls (Visible when in CAD mode) */}
@@ -1837,58 +1701,6 @@ export default function CadViewer({
               >
                 TXT
               </button>
-
-              {/* 💎 Ultra High-Fidelity Vector Toggle Button */}
-              <button
-                onClick={async () => {
-                  if (!hdSvgContent) {
-                    const ok = await fetchHdVectorSvg();
-                    if (!ok) {
-                      alert('고화질 벡터 도면을 생성 중이거나 불러오는 데 실패했습니다. 잠시 후 다시 시도해 주세요.');
-                    }
-                  } else {
-                    setUseHdVector(!useHdVector);
-                  }
-                }}
-                disabled={loadingSvg}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
-                  useHdVector && hdSvgContent
-                    ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/50'
-                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-                }`}
-                title="오토캐드 출력물과 100% 동일한 선 두께, 한글 글꼴, 치수선 고화질 벡터 뷰어"
-              >
-                <Sparkles className={`w-3.5 h-3.5 text-amber-400 ${loadingSvg ? 'animate-spin' : ''}`} />
-                <span>{loadingSvg ? '고화질 변환 중...' : 'HD 벡터 도면'}</span>
-                {useHdVector && hdSvgContent && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ring-2 ring-emerald-400/30"></span>
-                )}
-              </button>
-
-              {/* Zoom Button Group */}
-              <div className="flex items-center space-x-0.5 bg-slate-900 rounded-lg p-0.5 border border-slate-800 shrink-0">
-                <button
-                  onClick={() => zoomAtCenter(1.35)}
-                  className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white cursor-pointer"
-                  title="확대"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => zoomAtCenter(0.65)}
-                  className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white cursor-pointer"
-                  title="축소"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={resetView}
-                  className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white cursor-pointer"
-                  title="화면 맞춤 (1:1)"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              </div>
             </div>
           )}
 
@@ -2094,6 +1906,7 @@ export default function CadViewer({
           }}
           activeFileId={selectedFile?.id}
           reloadKey={`${selectedFile?.id || ''}_${drawings.length}`}
+          onBomUpdated={onBomUpdated}
         />
 
         {/* 🧭 Duplicate Drawings Quick Navigator Floating Bar */}
@@ -2258,7 +2071,7 @@ export default function CadViewer({
 
             <div className="text-[11px] text-emerald-400 flex items-center space-x-1.5">
               <Check className="w-3.5 h-3.5 shrink-0" />
-              <span>💡 행을 클릭(또는 더블클릭)하면 해당 도면 위치로 줌인됩니다. (전체 도면을 PC 뷰어로 열려면 상단의 [무료뷰어 연결] 버튼을 이용하세요)</span>
+              <span>💡 행을 클릭(또는 더블클릭)하면 해당 도면 위치로 정밀 줌인됩니다.</span>
             </div>
           </div>
 

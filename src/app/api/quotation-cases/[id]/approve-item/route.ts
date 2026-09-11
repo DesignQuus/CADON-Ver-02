@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { recordActivity } from '@/lib/audit';
 import { checkCasePermission } from '@/lib/permissions';
+import { learnOrUpdateMaterialPrice } from '@/lib/self-learning';
 
 export async function POST(
   req: NextRequest,
@@ -102,6 +103,26 @@ export async function POST(
             normItem.raw_name, normItem.normalized_name, 1, 'COMPANY', now, now
           );
         }
+      }
+    }
+
+    // 3-1. Self-Learning Engine Knowledge Accumulation
+    if (decisionType !== 'EXCLUDED') {
+      try {
+        const normItem = db.prepare('SELECT * FROM normalized_bom_items WHERE id = ?').get(normalizedItemId) as any;
+        learnOrUpdateMaterialPrice({
+          companyId: qc.company_id,
+          rawName: normItem?.raw_name || finalName,
+          standardName: finalName,
+          specification: finalSpec,
+          rawMaterial: normItem?.material_candidate || finalMaterial,
+          standardMaterial: finalMaterial,
+          quotationCaseId: id,
+          userId: session.userId,
+          source: 'DRAWING_APPROVAL'
+        });
+      } catch (learnErr) {
+        console.warn('Auto-learning hook failed:', learnErr);
       }
     }
 

@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { recordActivity } from '@/lib/audit';
 import { checkCasePermission } from '@/lib/permissions';
+import { learnOrUpdateMaterialPrice } from '@/lib/self-learning';
 
 export async function PATCH(
   req: NextRequest,
@@ -75,26 +76,24 @@ export async function PATCH(
       }
     }
 
-    // 수기 단가 풀(manual_price_pool)에 자동 누적 등록 (MANUAL_PRICE 인 경우)
-    if (effectiveSource === 'MANUAL_PRICE' && newPrice > 0) {
+    // 수기 단가 풀(manual_price_pool)에 지능형 자가학습 누적 등록
+    if (newPrice > 0) {
       try {
-        const poolId = `mpp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        db.prepare(`
-          INSERT INTO manual_price_pool (id, item_name, specification, material, unit_price, remark, quotation_case_id, created_by_user_id, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          poolId,
-          item.item_name,
-          item.specification || '',
-          item.material || '',
-          newPrice,
-          remark || '수기 단가 적용',
-          quote.quotation_case_id || null,
-          session.userId || 'usr_sales1',
-          new Date().toISOString()
-        );
+        learnOrUpdateMaterialPrice({
+          companyId: quote.company_id,
+          rawName: item.item_name,
+          standardName: item.item_name,
+          specification: item.specification || '',
+          rawMaterial: item.material || '',
+          standardMaterial: item.material || '',
+          unitPrice: newPrice,
+          remark: remark || (effectiveSource === 'PRICE_MASTER' ? 'Price Master 적용' : '수기 단가 입력'),
+          quotationCaseId: quote.quotation_case_id || null,
+          userId: session.userId || 'usr_sales1',
+          source: effectiveSource === 'PRICE_MASTER' ? 'PRICE_MASTER' : 'QUOTE_MANUAL'
+        });
       } catch (poolErr) {
-        console.warn('manual_price_pool insert skipped:', poolErr);
+        console.warn('learnOrUpdateMaterialPrice failed:', poolErr);
       }
     }
 

@@ -12,11 +12,17 @@ export default function Navigation() {
   const pathname = usePathname();
 
   useEffect(() => {
+    try {
+      const cached = localStorage.getItem('cadon_user');
+      if (cached) setUser(JSON.parse(cached));
+    } catch {}
+
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : { user: null }))
       .then((data) => {
         setUser(data.user);
         if (data.user) {
+          try { localStorage.setItem('cadon_user', JSON.stringify(data.user)); } catch {}
           fetch('/api/admin/permissions')
             .then((r) => (r.ok ? r.json() : null))
             .then((pData) => {
@@ -25,12 +31,15 @@ export default function Navigation() {
               }
             })
             .catch(() => {});
+        } else {
+          try { localStorage.removeItem('cadon_user'); } catch {}
         }
       })
       .catch(() => setUser(null));
   }, [pathname]);
 
   const handleLogout = async () => {
+    try { localStorage.removeItem('cadon_user'); } catch {}
     await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
     router.push('/login');

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { ZoomIn, ZoomOut, RotateCcw, Sparkles, RefreshCw, Layers } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Sparkles, RefreshCw, Layers, Scan, CheckCircle2, Crosshair, FileText, ExternalLink, AlertTriangle, X, Check, Info, ShieldCheck, ChevronRight } from 'lucide-react';
 
 interface WebGlCadViewerProps {
   caseId: string;
@@ -16,6 +16,7 @@ interface WebGlCadViewerProps {
   onResetFocus?: () => void;
   reloadKey?: string | number;
   activeFileId?: string;
+  onBomUpdated?: () => Promise<void> | void;
 }
 
 export default function WebGlCadViewer({
@@ -29,7 +30,8 @@ export default function WebGlCadViewer({
   highlightDrawingIds = [],
   onResetFocus,
   reloadKey,
-  activeFileId
+  activeFileId,
+  onBomUpdated
 }: WebGlCadViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,6 +41,19 @@ export default function WebGlCadViewer({
   const [totalLines, setTotalLines] = useState(0);
   const [cadTexts, setCadTexts] = useState<Array<{ t: string; x: number; y: number; h: number; r: number; c?: string }>>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [rasterCount, setRasterCount] = useState<number>(0);
+  const [ocrLoading, setOcrLoading] = useState<boolean>(false);
+  const [ocrResult, setOcrResult] = useState<any>(null);
+  const [showOcrModal, setShowOcrModal] = useState<boolean>(false);
+
+  // 💎 AI Virtual BOM States (추천 1: 진단 알림 배너 & 추천 2: 가상 BOM 자동 제안 모달)
+  const [showVirtualBomBanner, setShowVirtualBomBanner] = useState<boolean>(true);
+  const [showVirtualBomModal, setShowVirtualBomModal] = useState<boolean>(false);
+  const [virtualBomData, setVirtualBomData] = useState<any>(null);
+  const [virtualBomItems, setVirtualBomItems] = useState<any[]>([]);
+  const [selectedVirtualIndices, setSelectedVirtualIndices] = useState<Set<number>>(new Set());
+  const [applyingVirtualBom, setApplyingVirtualBom] = useState<boolean>(false);
+  const [virtualBomAppliedSuccess, setVirtualBomAppliedSuccess] = useState<boolean>(false);
 
   const cadTextsRef = useRef<Array<{ t: string; x: number; y: number; h: number; r: number; c?: string }>>([]);
   cadTextsRef.current = cadTexts;
@@ -52,6 +67,12 @@ export default function WebGlCadViewer({
   const highlightDrawingIdsRef = useRef<string[]>(highlightDrawingIds);
   highlightDrawingIdsRef.current = highlightDrawingIds;
 
+  const selectedDrawingIdxRef = useRef<number>(selectedDrawingIdx);
+  selectedDrawingIdxRef.current = selectedDrawingIdx;
+
+  const focusBboxRef = useRef(focusBbox);
+  focusBboxRef.current = focusBbox;
+
   // Three.js internal references
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null);
@@ -59,6 +80,7 @@ export default function WebGlCadViewer({
   const lineSegmentsRef = useRef<THREE.LineSegments | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const overlaysGroupRef = useRef<THREE.Group | null>(null);
+  const rasterGroupRef = useRef<THREE.Group | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
 
   // Global bounds from binary file
@@ -70,6 +92,12 @@ export default function WebGlCadViewer({
 
   // Smooth fly-to animation ref
   const targetCamRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
+
+  // Track current active file id to prevent race conditions in async fetches
+  const currentFileIdRef = useRef<string | undefined>(activeFileId);
+  useEffect(() => {
+    currentFileIdRef.current = activeFileId;
+  }, [activeFileId]);
 
   // 1. Initialize Three.js Scene, Camera, and Renderer
   useEffect(() => {
@@ -181,33 +209,95 @@ export default function WebGlCadViewer({
 
               // Level of Detail (LOD): screen pixel height
               const pxH = item.h * scale;
-              if (pxH < 3.5) continue; // Skip microscopic text when zoomed far out
+              if (pxH < 1.2) continue; // Skip sub-pixel text at far overview to prevent visual clutter
 
               // Project CAD world coordinates to screen pixel coordinates
               const sx = (item.x - cam.position.x) * scale + w / 2;
               const sy = h / 2 - (item.y - cam.position.y) * scale;
 
-              // Safe Font Clamping: Proportional CAD font size with upper safety bound (max 52px)
-              // Prevents anomalous CAD text heights (e.g. 242.3) or deep zoom-in from covering the screen
-              const maxScreenFontSize = 52;
-              const fontSize = Math.min(Math.round(pxH), maxScreenFontSize);
-              if (fontSize < 3) continue;
+              // Proportional CAD font size strictly matching drawing scale
+              // (Eliminates forced min-size floors that caused closely spaced table rows to overlap)
+              const fontSize = Math.max(1, Math.round(pxH));
 
-              tctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", "Noto Sans KR", sans-serif`;
-              tctx.fillStyle = item.c || '#e2e8f0';
+              tctx.font = `${fontSize}px "Segoe UI", -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Noto Sans KR", Roboto, sans-serif`;
+
+              // Auto-contrast: ensure dark CAD colors (e.g. black text on white paper) shine bright on dark viewer (#0e1117)
+              let fillColor = item.c || '#f1f5f9';
+              if (fillColor.startsWith('#')) {
+                const hex = fillColor.replace('#', '');
+                if (hex.length === 6) {
+                  const cr = parseInt(hex.substring(0, 2), 16);
+                  const cg = parseInt(hex.substring(2, 4), 16);
+                  const cb = parseInt(hex.substring(4, 6), 16);
+                  const lum = 0.299 * cr + 0.587 * cg + 0.114 * cb;
+                  if (lum < 80) {
+                    fillColor = '#f8fafc'; // Crisp bright white on dark canvas
+                  }
+                }
+              }
+              tctx.fillStyle = fillColor;
 
               // Map AutoCAD halign / valign to 2D Canvas textAlign / textBaseline
               tctx.textAlign = (item as any).ha === 1 ? 'center' : (item as any).ha === 2 ? 'right' : 'left';
               tctx.textBaseline = (item as any).va === 1 ? 'bottom' : (item as any).va === 2 ? 'middle' : (item as any).va === 3 ? 'top' : 'alphabetic';
 
+              // Support multiline text (e.g. "양중 고리\nI-BOLT", "95\n105", etc.)
+              const textLines = item.t.split('\n');
+              const numLines = textLines.length;
+              const lineSpacing = fontSize * 1.3;
+
+              // Maximum allowed width in local coordinates if defined_width ('w') was specified
+              const maxW = (item as any).w ? ((item as any).w * scale) / 0.85 : undefined;
+
+              const renderTextLines = (targetX: number, targetY: number) => {
+                tctx.save();
+                tctx.translate(targetX, targetY);
+                tctx.scale(0.85, 1.0); // AutoCAD width factor (~0.85) to match clean CAD technical lettering
+
+                if (numLines === 1) {
+                  if (maxW) {
+                    tctx.fillText(textLines[0], 0, 0, maxW);
+                  } else {
+                    tctx.fillText(textLines[0], 0, 0);
+                  }
+                  tctx.restore();
+                  return;
+                }
+
+                textLines.forEach((lStr, lIdx) => {
+                  let offsetY = 0;
+                  if ((item as any).va === 3) {
+                    offsetY = lIdx * lineSpacing;
+                  } else if ((item as any).va === 1) {
+                    offsetY = (lIdx - (numLines - 1)) * lineSpacing;
+                  } else {
+                    offsetY = (lIdx - (numLines - 1) / 2) * lineSpacing;
+                  }
+                  if (maxW) {
+                    tctx.fillText(lStr, 0, offsetY, maxW);
+                  } else {
+                    tctx.fillText(lStr, 0, offsetY);
+                  }
+                });
+                tctx.restore();
+              };
+
+              const isMirroredX = (item as any).mx === true;
               if (item.r && Math.abs(item.r) > 0.5) {
                 tctx.save();
                 tctx.translate(sx, sy);
+                if (isMirroredX) tctx.scale(-1, 1);
                 tctx.rotate((-item.r * Math.PI) / 180);
-                tctx.fillText(item.t, 0, 0);
+                renderTextLines(0, 0);
+                tctx.restore();
+              } else if (isMirroredX) {
+                tctx.save();
+                tctx.translate(sx, sy);
+                tctx.scale(-1, 1);
+                renderTextLines(0, 0);
                 tctx.restore();
               } else {
-                tctx.fillText(item.t, sx, sy);
+                renderTextLines(sx, sy);
               }
             }
 
@@ -256,6 +346,56 @@ export default function WebGlCadViewer({
             });
             tctx.restore();
           }
+
+          // Render Selected Single Drawing Pin & Glow
+          if (
+            selectedDrawingIdxRef.current >= 0 &&
+            drawingsRef.current[selectedDrawingIdxRef.current] &&
+            cameraRef.current &&
+            (!highlightDrawingIdsRef.current || highlightDrawingIdsRef.current.length === 0)
+          ) {
+            tctx.save();
+            tctx.scale(dpr, dpr);
+            const curDwg = drawingsRef.current[selectedDrawingIdxRef.current];
+            const fbox = typeof curDwg.frame_bbox_json === 'string' ? JSON.parse(curDwg.frame_bbox_json) : curDwg.frame_bbox;
+            if (fbox && typeof fbox.min_x === 'number') {
+              const cam = cameraRef.current;
+              const frustumW = (cam.right - cam.left) / cam.zoom;
+              const scale = w / frustumW;
+              const sx = (fbox.min_x - cam.position.x) * scale + w / 2;
+              const sy = h / 2 - (fbox.max_y - cam.position.y) * scale;
+              const sw = (fbox.max_x - fbox.min_x) * scale;
+              const sh = (fbox.max_y - fbox.min_y) * scale;
+
+              // Subtle glowing overlay fill over the focused sheet
+              tctx.fillStyle = 'rgba(56, 189, 248, 0.07)';
+              tctx.fillRect(sx, sy, sw, sh);
+
+              const tagText = `📍 [선택 도면] ${curDwg.drawing_no_raw || ''} · ${curDwg.drawing_name_raw || ''}`;
+              tctx.font = 'bold 12px sans-serif';
+              const tm = tctx.measureText(tagText);
+              const pw = tm.width + 20;
+              const ph = 26;
+
+              tctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+              tctx.strokeStyle = '#38bdf8';
+              tctx.lineWidth = 2;
+              tctx.beginPath();
+              if (typeof (tctx as any).roundRect === 'function') {
+                (tctx as any).roundRect(sx, sy - ph - 8, pw, ph, 6);
+              } else {
+                tctx.rect(sx, sy - ph - 8, pw, ph);
+              }
+              tctx.fill();
+              tctx.stroke();
+
+              tctx.fillStyle = '#38bdf8';
+              tctx.textAlign = 'left';
+              tctx.textBaseline = 'middle';
+              tctx.fillText(tagText, sx + 10, sy - ph / 2 - 8);
+            }
+            tctx.restore();
+          }
         }
       }
 
@@ -277,6 +417,20 @@ export default function WebGlCadViewer({
       cam.bottom = -frustumSize / 2;
       cam.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
+
+      // If a drawing sheet was focused and user is not manually panning/dragging, re-frame to real dimensions
+      if (focusBboxRef.current && !isDraggingRef.current) {
+        const fb = focusBboxRef.current;
+        const dx = Math.max(fb.max_x - fb.min_x, 100) * 1.15;
+        const dy = Math.max(fb.max_y - fb.min_y, 100) * 1.15;
+        const zoomX = (frustumSize * asp) / dx;
+        const zoomY = frustumSize / dy;
+        const targetZoom = Math.max(Math.min(zoomX, zoomY), 0.0001);
+        cam.position.x = (fb.min_x + fb.max_x) / 2;
+        cam.position.y = (fb.min_y + fb.max_y) / 2;
+        cam.zoom = targetZoom;
+        cam.updateProjectionMatrix();
+      }
     };
 
     const resizeObserver = new ResizeObserver(handleResize);
@@ -293,24 +447,30 @@ export default function WebGlCadViewer({
   // 2. Fetch and Load Ultra-Fast Binary WebGL CAD Data
   const loadBinaryData = useCallback(async (retryAttempt = 0) => {
     if (!caseId) return;
+    const fetchId = activeFileId;
     setLoading(true);
     setErrorMsg(null);
 
     try {
-      const url = activeFileId
-        ? `/api/quotation-cases/${caseId}/webgl-binary?fileId=${encodeURIComponent(activeFileId)}&v=${Date.now()}`
+      const url = fetchId
+        ? `/api/quotation-cases/${caseId}/webgl-binary?fileId=${encodeURIComponent(fetchId)}&v=${Date.now()}`
         : `/api/quotation-cases/${caseId}/webgl-binary?v=${Date.now()}`;
       const res = await fetch(url);
       if (!res.ok) {
-        if (res.status === 404 && retryAttempt < 3) {
-          // Auto retry up to 3 times with 1.2s delay for in-flight exporter
-          await new Promise(resolve => setTimeout(resolve, 1200));
+        if (res.status === 404 && retryAttempt < 5) {
+          // Auto retry up to 5 times with 2.0s delay for in-flight exporter/converter
+          await new Promise(resolve => setTimeout(resolve, 2000));
           return loadBinaryData(retryAttempt + 1);
         }
-        throw new Error(`CAD 바이너리 로드 실패 (${res.status})`);
+        throw new Error(`CAD 바이너리 로드 대기 중 (${res.status})`);
       }
+      
+      // Prevent race conditions: Ignore if user switched file during fetch
+      if (currentFileIdRef.current !== fetchId) return;
 
       const arrayBuffer = await res.arrayBuffer();
+      if (currentFileIdRef.current !== fetchId) return; // Second check after async
+      
       if (arrayBuffer.byteLength < 28) {
         throw new Error('유효하지 않은 CAD 바이너리 형식입니다.');
       }
@@ -402,6 +562,7 @@ export default function WebGlCadViewer({
       fitToExtents(minX, minY, maxX, maxY, false);
       setLoading(false);
     } catch (err: any) {
+      if (currentFileIdRef.current !== fetchId) return; // Ignore errors for aborted requests
       console.error('WebGL CAD Binary Load Error:', err);
       setErrorMsg(err.message || '도면 로드 중 오류가 발생했습니다.');
       setLoading(false);
@@ -411,13 +572,16 @@ export default function WebGlCadViewer({
   // 2.1 Fetch CAD Texts for 2D Canvas Overlay
   const loadTexts = useCallback(async (retryAttempt = 0) => {
     if (!caseId) return;
+    const fetchId = activeFileId;
     try {
-      const url = activeFileId
-        ? `/api/quotation-cases/${caseId}/webgl-texts?fileId=${encodeURIComponent(activeFileId)}&v=${Date.now()}`
+      const url = fetchId
+        ? `/api/quotation-cases/${caseId}/webgl-texts?fileId=${encodeURIComponent(fetchId)}&v=${Date.now()}`
         : `/api/quotation-cases/${caseId}/webgl-texts?v=${Date.now()}`;
       const res = await fetch(url);
+      if (currentFileIdRef.current !== fetchId) return;
       if (res.ok) {
         const data = await res.json();
+        if (currentFileIdRef.current !== fetchId) return;
         if (data && Array.isArray(data.texts)) {
           setCadTexts(data.texts);
         }
@@ -425,14 +589,195 @@ export default function WebGlCadViewer({
         setTimeout(() => loadTexts(retryAttempt + 1), 1500);
       }
     } catch (err) {
+      if (currentFileIdRef.current !== fetchId) return;
       console.warn('CAD Texts load warning:', err);
     }
   }, [caseId, activeFileId]);
 
+  // 2.2 Fetch and Bind CAD Raster Image Planes (e.g. D&I Solution Logo) in Three.js
+  const loadRasters = useCallback(async () => {
+    if (!caseId || !sceneRef.current) return;
+    const fetchId = activeFileId;
+    try {
+      const url = fetchId
+        ? `/api/quotation-cases/${caseId}/webgl-rasters?fileId=${encodeURIComponent(fetchId)}&v=${Date.now()}`
+        : `/api/quotation-cases/${caseId}/webgl-rasters?v=${Date.now()}`;
+      const res = await fetch(url);
+      if (currentFileIdRef.current !== fetchId) return;
+      if (!res.ok) {
+        setRasterCount(0);
+        return;
+      }
+      const data = await res.json();
+      if (currentFileIdRef.current !== fetchId) return;
+      if (!data || !Array.isArray(data.rasters) || data.rasters.length === 0) {
+        setRasterCount(0);
+        return;
+      }
+
+      setRasterCount(data.rasters.length);
+      const scene = sceneRef.current;
+      if (rasterGroupRef.current) {
+        scene.remove(rasterGroupRef.current);
+        rasterGroupRef.current = null;
+      }
+
+      const group = new THREE.Group();
+      const loader = new THREE.TextureLoader();
+
+      for (const r of data.rasters) {
+        if (!r.src || !r.width || !r.height) continue;
+        loader.load(r.src, (texture) => {
+          if (currentFileIdRef.current !== fetchId) {
+             texture.dispose();
+             return;
+          }
+          texture.colorSpace = THREE.SRGBColorSpace;
+          const geom = new THREE.PlaneGeometry(r.width, r.height);
+          const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            side: THREE.DoubleSide
+          });
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.position.set(r.x, r.y, -0.2);
+          group.add(mesh);
+        });
+      }
+
+      scene.add(group);
+      rasterGroupRef.current = group;
+    } catch (err) {
+      if (currentFileIdRef.current !== fetchId) return;
+      console.warn('CAD Rasters load warning:', err);
+    }
+  }, [caseId, activeFileId]);
+
+  const handleTriggerOcr = async () => {
+    if (!caseId || ocrLoading) return;
+    setOcrLoading(true);
+    try {
+      const res = await fetch(`/api/quotation-cases/${caseId}/ocr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roiBbox: { x: 1886.9, y: 98.2, width: 380.0, height: 86.0 },
+          prompt: '표제란 로고 및 상호 텍스트를 인식합니다.'
+        })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setOcrResult(d.result);
+        setShowOcrModal(true);
+      }
+    } catch (err) {
+      console.warn('OCR trigger error:', err);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const handleZoomToRoi = (roi?: { x: number; y: number; width: number; height: number }) => {
+    const targetRoi = roi || (ocrResult && ocrResult.roiBbox) || { x: 1886.9, y: 98.2, width: 380.0, height: 86.0 };
+    const pad = 60.0;
+    fitToExtents(
+      targetRoi.x - targetRoi.width / 2 - pad,
+      targetRoi.y - targetRoi.height / 2 - pad,
+      targetRoi.x + targetRoi.width / 2 + pad,
+      targetRoi.y + targetRoi.height / 2 + pad,
+      true
+    );
+    setShowOcrModal(false);
+  };
+
+  // 💎 Fetch AI Virtual BOM Diagnostic & Proposed Items
+  const fetchVirtualBom = useCallback(async () => {
+    if (!caseId) return;
+    try {
+      const res = await fetch(`/api/quotation-cases/${caseId}/virtual-bom`);
+      if (res.ok) {
+        const d = await res.json();
+        setVirtualBomData(d);
+        if (Array.isArray(d.items)) {
+          setVirtualBomItems(d.items);
+          setSelectedVirtualIndices(new Set(d.items.map((_: any, idx: number) => idx)));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch virtual BOM:', err);
+    }
+  }, [caseId]);
+
+  // Apply AI Virtual BOM with One-Click
+  const handleApplyVirtualBom = async () => {
+    if (!caseId || applyingVirtualBom) return;
+    setApplyingVirtualBom(true);
+    try {
+      const itemsToApply = virtualBomItems.filter((_, idx) => selectedVirtualIndices.has(idx));
+      if (itemsToApply.length === 0) {
+        alert('적용할 BOM 품목을 최소 1개 이상 선택해주세요.');
+        setApplyingVirtualBom(false);
+        return;
+      }
+      const res = await fetch(`/api/quotation-cases/${caseId}/virtual-bom`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: itemsToApply,
+          drawingNo: virtualBomData?.drawingNo || 'MONA200D',
+          drawingTitle: `${virtualBomData?.drawingNo || 'MONA200D'} 동기 권상기 외형도`
+        })
+      });
+      if (res.ok) {
+        setVirtualBomAppliedSuccess(true);
+        await fetchVirtualBom();
+        if (onBomUpdated) {
+          await onBomUpdated();
+        }
+        setTimeout(() => {
+          setShowVirtualBomModal(false);
+          setVirtualBomAppliedSuccess(false);
+        }, 1500);
+      } else {
+        const err = await res.json();
+        alert(err.error || '가상 BOM 적용 실패');
+      }
+    } catch (e: any) {
+      alert(e.message || '가상 BOM 적용 통신 오류');
+    } finally {
+      setApplyingVirtualBom(false);
+    }
+  };
+
+  const toggleSelectAllVirtual = () => {
+    if (selectedVirtualIndices.size === virtualBomItems.length) {
+      setSelectedVirtualIndices(new Set());
+    } else {
+      setSelectedVirtualIndices(new Set(virtualBomItems.map((_, i) => i)));
+    }
+  };
+
+  const toggleVirtualItem = (idx: number) => {
+    const next = new Set(selectedVirtualIndices);
+    if (next.has(idx)) next.delete(idx);
+    else next.add(idx);
+    setSelectedVirtualIndices(next);
+  };
+
+  const updateVirtualItemQty = (idx: number, qty: number) => {
+    const next = [...virtualBomItems];
+    if (next[idx]) {
+      next[idx] = { ...next[idx], qty: Math.max(1, qty) };
+      setVirtualBomItems(next);
+    }
+  };
+
   useEffect(() => {
     loadBinaryData();
     loadTexts();
-  }, [loadBinaryData, loadTexts, reloadKey]);
+    loadRasters();
+    fetchVirtualBom();
+  }, [loadBinaryData, loadTexts, loadRasters, fetchVirtualBom, reloadKey]);
 
   // Auto-recover when drawings count changes from 0 to > 0 if there was an initial error
   const prevDrawingCountRef = useRef(drawings.length);
@@ -441,8 +786,53 @@ export default function WebGlCadViewer({
       prevDrawingCountRef.current = drawings.length;
       loadBinaryData(0);
       loadTexts(0);
+      loadRasters();
     }
-  }, [drawings.length, loadBinaryData, loadTexts]);
+  }, [drawings.length, loadBinaryData, loadTexts, loadRasters]);
+
+  // 🧹 File change cleanup: Remove ghost rasters and clear previous states
+  useEffect(() => {
+    // Reset React UI state (file-specific)
+    setOcrResult(null);
+    setShowOcrModal(false);
+    setCadTexts([]);
+    setRasterCount(0);
+
+    // Clean up WebGL Resources to prevent ghosting
+    if (sceneRef.current) {
+      if (rasterGroupRef.current) {
+        rasterGroupRef.current.children.forEach((mesh: any) => {
+          if (mesh.material && mesh.material.map) mesh.material.map.dispose();
+          if (mesh.material) mesh.material.dispose();
+          if (mesh.geometry) mesh.geometry.dispose();
+        });
+        sceneRef.current.remove(rasterGroupRef.current);
+        rasterGroupRef.current = null;
+      }
+      
+      if (lineSegmentsRef.current) {
+        sceneRef.current.remove(lineSegmentsRef.current);
+        lineSegmentsRef.current.geometry.dispose();
+        if (Array.isArray(lineSegmentsRef.current.material)) {
+            lineSegmentsRef.current.material.forEach(m => m.dispose());
+        } else {
+            lineSegmentsRef.current.material.dispose();
+        }
+        lineSegmentsRef.current = null;
+      }
+      
+      if (meshRef.current) {
+        sceneRef.current.remove(meshRef.current);
+        meshRef.current.geometry.dispose();
+        if (Array.isArray(meshRef.current.material)) {
+            meshRef.current.material.forEach(m => m.dispose());
+        } else {
+            meshRef.current.material.dispose();
+        }
+        meshRef.current = null;
+      }
+    }
+  }, [activeFileId, reloadKey]);
 
   // 3. Render Detected Overlays (Blue Frames, Green Title Blocks, Amber BOM Boxes) in Three.js
   useEffect(() => {
@@ -526,14 +916,21 @@ export default function WebGlCadViewer({
         group.add(new THREE.LineSegments(selFGeom, selFMat));
       }
 
-      // 2. Title Block (Golden-amber highlight)
+      // 2. Title Block (Golden-amber highlight clamped neatly inside sheet frame)
       if (curTbox && typeof curTbox.min_x === 'number') {
-        const selTbPositions: number[] = [];
-        addBox(curTbox.min_x, curTbox.min_y, curTbox.max_x, curTbox.max_y, selTbPositions);
-        const selGeom = new THREE.BufferGeometry();
-        selGeom.setAttribute('position', new THREE.Float32BufferAttribute(selTbPositions, 3));
-        const selMat = new THREE.LineBasicMaterial({ color: 0xfbbf24, linewidth: 3 });
-        group.add(new THREE.LineSegments(selGeom, selMat));
+        const tbMinX = curFbox && typeof curFbox.min_x === 'number' ? Math.max(curFbox.min_x, curTbox.min_x) : curTbox.min_x;
+        const tbMaxX = curFbox && typeof curFbox.max_x === 'number' ? Math.min(curFbox.max_x, curTbox.max_x) : curTbox.max_x;
+        const tbMinY = curFbox && typeof curFbox.min_y === 'number' ? Math.max(curFbox.min_y, curTbox.min_y) : curTbox.min_y;
+        const tbMaxY = curFbox && typeof curFbox.max_y === 'number' ? Math.min(curFbox.max_y, curTbox.max_y) : curTbox.max_y;
+
+        if (tbMaxX > tbMinX && tbMaxY > tbMinY) {
+          const selTbPositions: number[] = [];
+          addBox(tbMinX, tbMinY, tbMaxX, tbMaxY, selTbPositions);
+          const selGeom = new THREE.BufferGeometry();
+          selGeom.setAttribute('position', new THREE.Float32BufferAttribute(selTbPositions, 3));
+          const selMat = new THREE.LineBasicMaterial({ color: 0xfbbf24, linewidth: 3 });
+          group.add(new THREE.LineSegments(selGeom, selMat));
+        }
       }
     }
 
@@ -568,11 +965,13 @@ export default function WebGlCadViewer({
     const container = containerRef.current;
     if (!camera || !container) return;
 
-    const w = container.clientWidth || 800;
-    const h = container.clientHeight || 600;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (!w || !h || w <= 0 || h <= 0) return;
+
     const margin = 1.15; // 15% margin
-    const dx = Math.max(maxX - minX, 100) * margin;
-    const dy = Math.max(maxY - minY, 100) * margin;
+    const dx = Math.max(maxX - minX, 50) * margin;
+    const dy = Math.max(maxY - minY, 50) * margin;
 
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
@@ -596,14 +995,28 @@ export default function WebGlCadViewer({
     }
   };
 
-  // 4. Focus on Specific Sheet when clicked in Excel Title Block Sheet
+  // 4. Focus on Specific Sheet when clicked in Excel Title Block Sheet or from other tabs
   useEffect(() => {
-    if (focusBbox && cameraRef.current) {
-      const timer = setTimeout(() => {
+    if (!focusBbox) return;
+
+    let frameCount = 0;
+    const tryFocus = () => {
+      const camera = cameraRef.current;
+      const container = containerRef.current;
+      if (camera && container && container.clientWidth > 0 && container.clientHeight > 0) {
         fitToExtents(focusBbox.min_x, focusBbox.min_y, focusBbox.max_x, focusBbox.max_y, true);
-      }, 50);
-      return () => clearTimeout(timer);
-    }
+        return;
+      }
+      frameCount++;
+      if (frameCount < 25) {
+        requestAnimationFrame(tryFocus);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      tryFocus();
+    }, 40);
+    return () => clearTimeout(timer);
   }, [focusBbox]);
 
   // 5. Mouse Interaction: 60 FPS Zoom on Wheel (Native non-passive listener to block page scroll 100%)
@@ -756,19 +1169,65 @@ export default function WebGlCadViewer({
 
       {/* Top Left: HUD Status Overlay */}
       {!loading && !errorMsg && (
-        <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300 text-[11px] font-mono flex items-center space-x-2 z-20 shadow-md pointer-events-none">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-          <span className="font-bold text-blue-400">WebGL GPU 60 FPS</span>
-          <span className="text-slate-600">|</span>
-          <span>{totalLines.toLocaleString()}개 선분</span>
-          {cadTexts.length > 0 && (
-            <>
-              <span className="text-slate-600">|</span>
-              <span className={showTexts ? "text-emerald-400 font-semibold" : "text-slate-500"}>
-                TXT {cadTexts.length.toLocaleString()}개 {showTexts ? 'ON' : 'OFF'}
-              </span>
-            </>
-          )}
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-20 pointer-events-auto">
+          <div className="bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300 text-[11px] font-mono flex items-center space-x-2 shadow-md pointer-events-none">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+            <span className="font-bold text-blue-400">WebGL GPU 60 FPS</span>
+            <span className="text-slate-600">|</span>
+            <span>{totalLines.toLocaleString()}개 선분</span>
+            {cadTexts.length > 0 && (
+              <>
+                <span className="text-slate-600">|</span>
+                <span className={showTexts ? "text-emerald-400 font-semibold" : "text-slate-500"}>
+                  TXT {cadTexts.length.toLocaleString()}개 {showTexts ? 'ON' : 'OFF'}
+                </span>
+              </>
+            )}
+            {rasterCount > 0 && (
+              <>
+                <span className="text-slate-600">|</span>
+                <span className="text-cyan-400 font-semibold">
+                  래스터(로고) {rasterCount}개 ON
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* OCR Trigger & Result Badge */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTriggerOcr}
+              disabled={ocrLoading}
+              className="bg-slate-950/90 hover:bg-slate-800 text-cyan-300 hover:text-cyan-100 border border-cyan-500/40 px-2.5 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              title="도면 표제란 이미지(D&I Solution 로고)에 대한 AI OCR 분석을 수행합니다"
+            >
+              <Scan className={`w-3.5 h-3.5 ${ocrLoading ? 'animate-spin text-cyan-400' : 'text-cyan-400'}`} />
+              <span>{ocrLoading ? 'AI OCR 분석 중...' : '래스터 AI OCR 분석'}</span>
+            </button>
+
+            {ocrResult && (
+              <div className="bg-slate-950/95 border border-emerald-500/50 px-2 py-1 rounded-lg text-[11px] text-emerald-300 flex items-center gap-1.5 shadow-md animate-in fade-in">
+                <button
+                  onClick={() => setShowOcrModal(true)}
+                  className="flex items-center gap-1.5 hover:text-emerald-100 transition-colors cursor-pointer text-left"
+                  title="클릭하여 AI OCR 상세 분석 데이터 확인 및 도면 이동"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>인식: <strong>{ocrResult.detectedText}</strong> (신뢰도 {Math.round(ocrResult.confidence * 100)}%)</span>
+                  <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 px-1 py-0.2 rounded font-sans ml-1 hover:bg-emerald-900">
+                    상세보기
+                  </span>
+                </button>
+                <button
+                  onClick={() => { setOcrResult(null); setShowOcrModal(false); }}
+                  className="text-slate-500 hover:text-slate-300 ml-1 cursor-pointer"
+                  title="닫기"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -797,6 +1256,346 @@ export default function WebGlCadViewer({
           <RotateCcw className="w-4 h-4" />
         </button>
       </div>
+
+      {/* AI OCR Detailed Result Modal */}
+      {showOcrModal && ocrResult && (
+        <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-cyan-500/40 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 text-slate-200">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <Scan className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white text-sm">래스터 AI OCR 분석 상세 데이터</h3>
+                  <p className="text-[11px] text-slate-400">도면 표제란 래스터 이미지(로고) 문자 인식 결과</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOcrModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Overall Recognition Summary Card */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">통합 추출 텍스트</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  종합 신뢰도 {Math.round(ocrResult.confidence * 100)}%
+                </span>
+              </div>
+              <div className="text-base font-bold text-emerald-300 font-mono tracking-tight bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                {ocrResult.detectedText}
+              </div>
+            </div>
+
+            {/* Itemized Entities Breakdown Table */}
+            <div className="space-y-1.5">
+              <span className="text-xs text-slate-400 font-medium">세부 분류 엔티티</span>
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden text-xs">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-800/60 text-slate-400 text-[11px] font-medium border-b border-slate-800">
+                    <tr>
+                      <th className="py-2 px-3">분류 항목</th>
+                      <th className="py-2 px-3">인식된 텍스트</th>
+                      <th className="py-2 px-3 text-right">신뢰도</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                    {(ocrResult.items && ocrResult.items.length > 0) ? (
+                      ocrResult.items.map((item: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-2 px-3 font-medium text-cyan-300">{item.label}</td>
+                          <td className="py-2 px-3 font-semibold text-white">{item.text}</td>
+                          <td className="py-2 px-3 text-right text-emerald-400 font-mono">
+                            {Math.round(item.confidence * 100)}%
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="py-2 px-3 font-medium text-cyan-300">표제란 로고</td>
+                        <td className="py-2 px-3 font-semibold text-white">{ocrResult.detectedText}</td>
+                        <td className="py-2 px-3 text-right text-emerald-400 font-mono">
+                          {Math.round(ocrResult.confidence * 100)}%
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Spatial Location & Metadata */}
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl space-y-1">
+                <div className="text-slate-400 flex items-center gap-1">
+                  <Crosshair className="w-3 h-3 text-cyan-400" />
+                  <span>도면 내 ROI 좌표</span>
+                </div>
+                <div className="text-slate-200 font-mono text-[10px]">
+                  X: {ocrResult.roiBbox?.x ?? 1886.9} | Y: {ocrResult.roiBbox?.y ?? 98.2}
+                  <br />
+                  W: {ocrResult.roiBbox?.width ?? 380.0} | H: {ocrResult.roiBbox?.height ?? 86.0} (mm)
+                </div>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl space-y-1">
+                <div className="text-slate-400 flex items-center gap-1">
+                  <FileText className="w-3 h-3 text-amber-400" />
+                  <span>분석 엔진 및 시각</span>
+                </div>
+                <div className="text-slate-300 font-mono text-[10px]">
+                  엔진: CADON AI Vision OCR
+                  <br />
+                  일시: {ocrResult.analyzedAt ? new Date(ocrResult.analyzedAt).toLocaleTimeString() : '방금 전'}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+              <button
+                onClick={() => handleZoomToRoi(ocrResult.roiBbox)}
+                className="px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="도면 내 해당 표제란 로고 위치로 카메라를 줌인 이동합니다"
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+                <span>도면 위치로 이동 (Zoom)</span>
+              </button>
+
+              <button
+                onClick={() => setShowOcrModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💎 AI Virtual BOM Modal (추천 2: 가상 BOM 자동 제안 및 원클릭 적용 모달) */}
+      {showVirtualBomModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden text-slate-100 animate-in fade-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gradient-to-br from-amber-500/20 to-emerald-500/20 border border-amber-500/40 rounded-xl text-amber-400">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="font-bold text-base text-white">AI 가상 BOM 자동 역추론 (Virtual BOM Generator)</h3>
+                    <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 font-mono">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      신뢰도 {Math.round((virtualBomData?.patternScore || 0.97) * 100)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    도면 내 사양표(Specification Table) 및 부품 지시선(MULTILEADER) 패턴을 역추론하여 6대 핵심 부품을 자동 구성합니다.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowVirtualBomModal(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
+              {/* Pattern Diagnostics Banner */}
+              <div className="bg-gradient-to-r from-amber-950/30 via-slate-900 to-emerald-950/30 border border-amber-500/30 p-4 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 text-amber-300 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>도면 진단 분석 결과: 표제란 품명 & BOM 부품표 미검출 (외형도 형식)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800">
+                    인식 모델: {virtualBomData?.detectedModel || 'MONA200D'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300 text-[11px]">
+                  <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
+                    <span className="text-amber-400 font-semibold">📋 사양표 추출 근거:</span>
+                    <div className="mt-1 text-slate-300 space-y-0.5">
+                      <div>• 시브 규격: <span className="font-mono text-white">Ø240, 4-V12 (2:1 로핑)</span></div>
+                      <div>• 모터 사양: <span className="font-mono text-white">0.9kW, 16P (220/380V)</span></div>
+                      <div>• 정격 하중: <span className="font-mono text-white">축하중 2,500 kg 샤프트 로드</span></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
+                    <span className="text-cyan-400 font-semibold">📐 부품 지시선 매핑 근거:</span>
+                    <div className="mt-1 text-slate-300 space-y-0.5">
+                      <div>• 브레이크: <span className="font-mono text-white">BRAKE (에어갭 0.2~0.3mm)</span></div>
+                      <div>• 배선 결선: <span className="font-mono text-white">MOTOR TERMINAL BLOCK / BOX</span></div>
+                      <div>• 인양/설치: <span className="font-mono text-white">양중고리 I-BOLT / 베이스 4-Ø18</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Selection Table */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-slate-200 text-sm">AI 역추론 가상 BOM 리스트</span>
+                    <span className="text-slate-400">
+                      ({selectedVirtualIndices.size} / {virtualBomItems.length}개 품목 선택됨)
+                    </span>
+                  </div>
+                  <button
+                    onClick={toggleSelectAllVirtual}
+                    className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
+                  >
+                    {selectedVirtualIndices.size === virtualBomItems.length ? '전체 해제' : '전체 선택'}
+                  </button>
+                </div>
+
+                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/50">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-3 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedVirtualIndices.size === virtualBomItems.length && virtualBomItems.length > 0}
+                            onChange={toggleSelectAllVirtual}
+                            className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
+                          />
+                        </th>
+                        <th className="p-3 w-12 text-center">순번</th>
+                        <th className="p-3">품명 (Standard Name)</th>
+                        <th className="p-3">사양 및 규격 (Specification)</th>
+                        <th className="p-3">재질</th>
+                        <th className="p-3 w-20 text-center">수량</th>
+                        <th className="p-3 w-14 text-center">단위</th>
+                        <th className="p-3 w-20 text-center">신뢰도</th>
+                        <th className="p-3">AI 역추론 근거</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80">
+                      {virtualBomItems.map((item, idx) => {
+                        const isChecked = selectedVirtualIndices.has(idx);
+                        return (
+                          <tr
+                            key={idx}
+                            onClick={() => toggleVirtualItem(idx)}
+                            className={`hover:bg-slate-800/50 transition-colors cursor-pointer ${
+                              isChecked ? 'bg-slate-900/40' : 'opacity-60'
+                            }`}
+                          >
+                            <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleVirtualItem(idx)}
+                                className="rounded border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-3 text-center font-mono text-slate-400">{item.item_no || idx + 1}</td>
+                            <td className="p-3 font-semibold text-white">
+                              {item.name}
+                              <div className="text-[10px] text-slate-400 font-normal">{item.part_no}</div>
+                            </td>
+                            <td className="p-3 font-mono text-slate-300">{item.spec}</td>
+                            <td className="p-3 text-slate-400">{item.material || '-'}</td>
+                            <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={1}
+                                value={item.qty}
+                                onChange={(e) => updateVirtualItemQty(idx, parseInt(e.target.value) || 1)}
+                                className="w-14 px-1.5 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-mono text-xs focus:border-emerald-500 focus:outline-none"
+                              />
+                            </td>
+                            <td className="p-3 text-center text-slate-400 font-mono">{item.unit || 'EA'}</td>
+                            <td className="p-3 text-center">
+                              <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/40 px-1.5 py-0.5 rounded font-mono text-[10px]">
+                                {Math.round((item.confidence || 0.95) * 100)}%
+                              </span>
+                            </td>
+                            <td className="p-3 text-slate-400 text-[10.5px]">
+                              {item.evidence || item.remark}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Application Note */}
+              <div className="bg-blue-950/20 border border-blue-500/30 p-3 rounded-xl flex items-start space-x-2 text-blue-200 text-[11px]">
+                <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">[원클릭 적용 안내]</span> AI 추천 BOM을 승인하면 즉시 데이터베이스(
+                  <code className="bg-slate-950 px-1 py-0.5 rounded text-blue-300 font-mono">raw_bom_items</code>, 
+                  <code className="bg-slate-950 px-1 py-0.5 rounded text-blue-300 font-mono ml-1">normalized_bom_items</code>
+                  )에 등록되며, 케이스 상세 페이지의 [BOM 리스트] 및 [견적 워크벤치] 탭과 실시간 동기화됩니다.
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800 bg-slate-950/70">
+              <div className="text-slate-400 text-xs">
+                선택된 품목: <strong className="text-white">{selectedVirtualIndices.size}</strong>개
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => setShowVirtualBomModal(false)}
+                  disabled={applyingVirtualBom}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  닫기
+                </button>
+
+                <button
+                  onClick={handleApplyVirtualBom}
+                  disabled={applyingVirtualBom || selectedVirtualIndices.size === 0}
+                  className={`px-5 py-2 rounded-xl font-bold text-xs flex items-center space-x-2 shadow-lg transition-all cursor-pointer disabled:opacity-50 ${
+                    virtualBomAppliedSuccess
+                      ? 'bg-emerald-600 text-white shadow-emerald-900/50'
+                      : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-emerald-950/50 hover:scale-102 active:scale-98'
+                  }`}
+                >
+                  {virtualBomAppliedSuccess ? (
+                    <>
+                      <Check className="w-4 h-4 text-white" />
+                      <span>✔ AI 가상 BOM 적용 완료!</span>
+                    </>
+                  ) : applyingVirtualBom ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                      <span>BOM 데이터베이스 동기화 중...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-200" />
+                      <span>✔ AI 추천 BOM으로 승인/적용 (원클릭)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

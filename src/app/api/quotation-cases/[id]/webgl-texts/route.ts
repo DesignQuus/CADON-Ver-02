@@ -16,13 +16,21 @@ export async function GET(
   }
 
   const { id } = await params;
+  const { searchParams } = new URL(req.url);
+  const fileId = searchParams.get('fileId');
 
   // Guard: Verify that at least one valid source CAD drawing exists for this case
-  const hasSourceDrawing = db.prepare(`
-    SELECT 1 FROM uploaded_files
-    WHERE quotation_case_id = ? AND file_role != 'VECTOR_SVG' AND file_type IN ('DWG', 'DXF')
-    LIMIT 1
-  `).get(id);
+  const hasSourceDrawing = fileId
+    ? db.prepare(`
+        SELECT 1 FROM uploaded_files
+        WHERE quotation_case_id = ? AND (id = ? OR derived_from_file_id = ?) AND file_role != 'VECTOR_SVG' AND file_type IN ('DWG', 'DXF')
+        LIMIT 1
+      `).get(id, fileId, fileId)
+    : db.prepare(`
+        SELECT 1 FROM uploaded_files
+        WHERE quotation_case_id = ? AND file_role != 'VECTOR_SVG' AND file_type IN ('DWG', 'DXF')
+        LIMIT 1
+      `).get(id);
 
   if (!hasSourceDrawing) {
     return NextResponse.json({ error: '등록된 도면 파일이 없습니다.' }, { status: 404 });
@@ -35,11 +43,38 @@ export async function GET(
   const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
   const egdeskDerived = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'storage', 'derived');
 
+  const filePrefix = fileId ? `${id}_${fileId}` : id;
   const candidates = [
-    path.join(derivedDir, `${id}__cad_texts.json`),
-    path.join(localDerived, `${id}__cad_texts.json`),
-    path.join(egdeskDerived, `${id}__cad_texts.json`)
+    path.join(derivedDir, `${filePrefix}__cad_texts.json`),
+    path.join(localDerived, `${filePrefix}__cad_texts.json`),
+    path.join(egdeskDerived, `${filePrefix}__cad_texts.json`)
   ];
+
+  // If fileId given and derived_from_file_id might have been used in naming, check alternative
+  if (fileId) {
+    const altRow = db.prepare(`
+      SELECT id FROM uploaded_files
+      WHERE quotation_case_id = ? AND (derived_from_file_id = ? OR id = ?) AND file_type = 'DXF'
+      LIMIT 1
+    `).get(id, fileId, fileId) as any;
+    if (altRow && altRow.id !== fileId) {
+      const altPrefix = `${id}_${altRow.id}`;
+      candidates.push(
+        path.join(derivedDir, `${altPrefix}__cad_texts.json`),
+        path.join(localDerived, `${altPrefix}__cad_texts.json`),
+        path.join(egdeskDerived, `${altPrefix}__cad_texts.json`)
+      );
+    }
+  }
+
+  // Fallback to legacy case-level cache if fileId is not explicitly provided
+  if (!fileId) {
+    candidates.push(
+      path.join(derivedDir, `${id}__cad_texts.json`),
+      path.join(localDerived, `${id}__cad_texts.json`),
+      path.join(egdeskDerived, `${id}__cad_texts.json`)
+    );
+  }
 
   let targetTxt = '';
   for (const c of candidates) {
@@ -51,7 +86,7 @@ export async function GET(
 
   // Cross-sync if found in one location
   if (targetTxt) {
-    for (const c of candidates) {
+    for (const c of candidates.slice(0, 3)) {
       if (!fs.existsSync(c)) {
         try {
           fs.mkdirSync(path.dirname(c), { recursive: true });
@@ -63,12 +98,19 @@ export async function GET(
 
   // Auto-generate if missing in all locations
   if (!targetTxt || !fs.existsSync(targetTxt)) {
-    const sourceFile = db.prepare(`
-      SELECT * FROM uploaded_files
-      WHERE quotation_case_id = ? AND file_type IN ('DXF', 'DWG')
-      ORDER BY (CASE WHEN file_type = 'DXF' THEN 1 ELSE 2 END) ASC, created_at DESC
-      LIMIT 1
-    `).get(id) as any;
+    const sourceFile = fileId
+      ? (db.prepare(`
+          SELECT * FROM uploaded_files
+          WHERE quotation_case_id = ? AND (id = ? OR derived_from_file_id = ?) AND file_type IN ('DXF', 'DWG')
+          ORDER BY (CASE WHEN file_type = 'DXF' THEN 1 ELSE 2 END) ASC, created_at DESC
+          LIMIT 1
+        `).get(id, fileId, fileId) as any)
+      : (db.prepare(`
+          SELECT * FROM uploaded_files
+          WHERE quotation_case_id = ? AND file_type IN ('DXF', 'DWG')
+          ORDER BY (CASE WHEN file_type = 'DXF' THEN 1 ELSE 2 END) ASC, created_at DESC
+          LIMIT 1
+        `).get(id) as any);
 
     if (sourceFile && sourceFile.storage_path) {
       const srcPath = resolveStoragePath(sourceFile.storage_path);
@@ -80,7 +122,7 @@ export async function GET(
         if (fs.existsSync(candidates[0])) {
           targetTxt = candidates[0];
           // Copy to other locations as well
-          for (const c of candidates) {
+          for (const c of candidates.slice(0, 3)) {
             if (c !== candidates[0] && !fs.existsSync(c)) {
               try {
                 fs.mkdirSync(path.dirname(c), { recursive: true });

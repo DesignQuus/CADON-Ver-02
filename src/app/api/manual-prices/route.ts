@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { getLearnedPricePool } from '@/lib/self-learning';
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -10,49 +11,47 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const name = searchParams.get('name')?.trim() || '';
+  const mode = searchParams.get('mode');
 
   try {
-    // Ensure table exists
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS manual_price_pool (
-        id TEXT PRIMARY KEY,
-        item_name TEXT NOT NULL,
-        specification TEXT,
-        material TEXT,
-        unit_price REAL NOT NULL,
-        remark TEXT,
-        quotation_case_id TEXT,
-        created_by_user_id TEXT,
-        created_at TEXT NOT NULL
-      );
-    `);
+    if (mode === 'ALL_LEARNED') {
+      const allLearned = getLearnedPricePool();
+      return NextResponse.json({ success: true, list: allLearned });
+    }
 
     let query = `
       SELECT 
-        MAX(id) as id,
-        item_name, 
-        specification, 
-        material, 
-        unit_price, 
-        MAX(remark) as remark, 
-        MAX(quotation_case_id) as quotation_case_id, 
-        MAX(created_at) as created_at,
+        MAX(mpp.id) as id,
+        mpp.item_name, 
+        mpp.specification, 
+        mpp.material, 
+        mpp.standard_name,
+        mpp.standard_material,
+        mpp.unit_price, 
+        MAX(mpp.remark) as remark, 
+        MAX(mpp.quotation_case_id) as quotation_case_id, 
+        MAX(mpp.created_at) as created_at,
+        MAX(COALESCE(mpp.approval_count, 1)) as approval_count,
+        MAX(mpp.last_used_at) as last_used_at,
+        MAX(mpp.source) as source,
+        c.company_name,
         CASE
-          WHEN LOWER(item_name) = LOWER(?) THEN 100
-          WHEN LOWER(item_name) LIKE LOWER(?) THEN 50
+          WHEN LOWER(mpp.item_name) = LOWER(?) THEN 100
+          WHEN LOWER(mpp.item_name) LIKE LOWER(?) THEN 50
           ELSE 10
         END as match_score
-      FROM manual_price_pool
+      FROM manual_price_pool mpp
+      LEFT JOIN companies c ON mpp.company_id = c.id
     `;
     const params: any[] = [name, `%${name}%`];
 
     if (name) {
-      query += ` WHERE LOWER(item_name) LIKE LOWER(?) OR LOWER(specification) LIKE LOWER(?)`;
+      query += ` WHERE LOWER(mpp.item_name) LIKE LOWER(?) OR LOWER(COALESCE(mpp.specification, '')) LIKE LOWER(?)`;
       params.push(`%${name}%`, `%${name}%`);
     }
 
-    query += ` GROUP BY item_name, specification, material, unit_price`;
-    query += ` ORDER BY match_score DESC, created_at DESC LIMIT 15`;
+    query += ` GROUP BY mpp.item_name, mpp.specification, mpp.material, mpp.unit_price`;
+    query += ` ORDER BY match_score DESC, mpp.created_at DESC LIMIT 15`;
 
     const results = db.prepare(query).all(...params) as any[];
 

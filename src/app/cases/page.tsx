@@ -39,7 +39,12 @@ import {
   Minus,
   X,
   User,
-  Users
+  Users,
+  Archive,
+  Trash2,
+  RotateCcw,
+  Trash,
+  AlertTriangle
 } from 'lucide-react';
 
 type SortField = 'date' | 'amount' | 'drawings' | 'bom' | 'case_no' | 'case_name';
@@ -157,10 +162,17 @@ export default function CasesPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Filter & Search States
-  const [selectedTab, setSelectedTab] = useState<'ALL' | 'READY_FOR_QUOTE' | 'ANALYZED' | 'PENDING' | 'PRIVATE_APPROVAL' | 'SECURE_VAULT'>('ALL');
+  const [selectedTab, setSelectedTab] = useState<'ALL' | 'READY_FOR_QUOTE' | 'ANALYZED' | 'PENDING' | 'PRIVATE_APPROVAL' | 'SECURE_VAULT' | 'ARCHIVED' | 'TRASHED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterManager, setFilterManager] = useState('ALL');
   const [filterCompany, setFilterCompany] = useState('ALL');
+
+  // Lifecycle States (보관, 휴지통, 복원, 영구삭제)
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [archiveTargetIds, setArchiveTargetIds] = useState<string[]>([]);
+  const [archiveReasonType, setArchiveReasonType] = useState('고객사 일정/품의 지연 (잠정 보류)');
+  const [archiveCustomReason, setArchiveCustomReason] = useState('');
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
 
   // Enterprise View, Sorting & Pagination States
   const [viewMode, setViewMode] = useState<'TABLE' | 'CARD'>('TABLE');
@@ -199,9 +211,136 @@ export default function CasesPage() {
     fetchCases();
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : { user: null }))
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        setUser(data.user);
+        if (data.user && data.user.role !== 'SUPER_ADMIN') {
+          // 일반 견적 담당자는 로그인 시 '내 담당건' 필터로 기본 적용하여 타 담당자 건과 혼선 방지
+          setFilterManager(data.user.userId);
+        }
+      })
       .catch(() => setUser(null));
   }, []);
+
+  // Lifecycle Action Handlers
+  const openArchiveModal = (ids: string[]) => {
+    setArchiveTargetIds(ids);
+    setArchiveReasonType('고객사 일정/품의 지연 (잠정 보류)');
+    setArchiveCustomReason('');
+    setArchiveModalOpen(true);
+  };
+
+  const handleConfirmArchive = async () => {
+    if (archiveTargetIds.length === 0) return;
+    const finalReason = archiveReasonType === 'CUSTOM' ? (archiveCustomReason.trim() || '기타 보관') : archiveReasonType;
+    setLifecycleLoading(true);
+    try {
+      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseIds: archiveTargetIds,
+          action: 'ARCHIVE',
+          reason: finalReason
+        })
+      });
+      if (res.ok) {
+        setArchiveModalOpen(false);
+        setSelectedCaseIds(prev => prev.filter(id => !archiveTargetIds.includes(id)));
+        await fetchCases();
+      } else {
+        const d = await res.json();
+        alert(d.error || '보관 처리 실패');
+      }
+    } catch (err: any) {
+      alert('보관 처리 중 오류: ' + err.message);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
+
+  const handleTrashCases = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!confirm(`선택한 ${ids.length}건의 견적 건을 휴지통으로 이동하시겠습니까?\n(30일간 보관 후 완전 삭제되며, 언제든 복원할 수 있습니다.)`)) {
+      return;
+    }
+    setLifecycleLoading(true);
+    try {
+      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseIds: ids,
+          action: 'TRASH'
+        })
+      });
+      if (res.ok) {
+        setSelectedCaseIds(prev => prev.filter(id => !ids.includes(id)));
+        await fetchCases();
+      } else {
+        const d = await res.json();
+        alert(d.error || '휴지통 이동 실패');
+      }
+    } catch (err: any) {
+      alert('휴지통 이동 중 오류: ' + err.message);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
+
+  const handleRestoreCases = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setLifecycleLoading(true);
+    try {
+      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseIds: ids,
+          action: 'RESTORE'
+        })
+      });
+      if (res.ok) {
+        setSelectedCaseIds(prev => prev.filter(id => !ids.includes(id)));
+        await fetchCases();
+      } else {
+        const d = await res.json();
+        alert(d.error || '복원 실패');
+      }
+    } catch (err: any) {
+      alert('복원 처리 중 오류: ' + err.message);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
+
+  const handlePermanentDeleteCases = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!confirm(`⚠️ 경고: 선택한 ${ids.length}건을 완전 영구 삭제하시겠습니까?\n모든 도면 파일 및 BOM 산출 데이터가 복구 불가능하게 삭제됩니다.`)) {
+      return;
+    }
+    setLifecycleLoading(true);
+    try {
+      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseIds: ids,
+          action: 'PERMANENT_DELETE'
+        })
+      });
+      if (res.ok) {
+        setSelectedCaseIds(prev => prev.filter(id => !ids.includes(id)));
+        await fetchCases();
+      } else {
+        const d = await res.json();
+        alert(d.error || '영구 삭제 실패');
+      }
+    } catch (err: any) {
+      alert('영구 삭제 중 오류: ' + err.message);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
 
   // Reset pagination when search, tab, or pageSize changes
   useEffect(() => {
@@ -227,8 +366,8 @@ export default function CasesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          companyId: 'comp_sechang',
-          projectId: 'proj_sechang',
+          companyId: 'comp_unassigned',
+          projectId: 'proj_unassigned',
           caseName: autoCaseName
         })
       });
@@ -252,8 +391,21 @@ export default function CasesPage() {
       if (!uploadRes.ok) {
         throw new Error('도면 파일 업로드에 실패했습니다.');
       }
+      const uploadJson = await uploadRes.json();
 
-      // 3. Immediately redirect to the case workbench
+      // 3. Automatically analyze CAD drawing so WebGL binary & drawing sheets are fully generated!
+      setQuickUploadStatus(`'${file.name}' CAD 도면 자동 분석 및 WebGL 렌더링 준비 중...`);
+      try {
+        await fetch(`/api/quotation-cases/${newCaseId}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: uploadJson.file.id })
+        });
+      } catch (analyzeErr) {
+        console.warn('Auto analysis warning:', analyzeErr);
+      }
+
+      // 4. Redirect to the case workbench
       setQuickUploadStatus('워크벤치로 이동 중...');
       router.push(`/cases/${newCaseId}`);
     } catch (err: any) {
@@ -297,40 +449,53 @@ export default function CasesPage() {
     }
   };
 
+  // Lifecycle Partitions
+  const activeCases = useMemo(() => cases.filter(c => !c.lifecycle_status || c.lifecycle_status === 'ACTIVE'), [cases]);
+  const archivedCases = useMemo(() => cases.filter(c => c.lifecycle_status === 'ARCHIVED'), [cases]);
+  const trashedCases = useMemo(() => cases.filter(c => c.lifecycle_status === 'TRASHED'), [cases]);
+
   // KPI Calculations
+  const currentTabBaseCases = useMemo(() => {
+    if (selectedTab === 'ARCHIVED') return archivedCases;
+    if (selectedTab === 'TRASHED') return trashedCases;
+    return activeCases;
+  }, [selectedTab, activeCases, archivedCases, trashedCases]);
+
   const uniqueManagers = Array.from(
     new Map(
-      cases
+      currentTabBaseCases
         .filter(c => c.created_by_user_id)
         .map(c => [c.created_by_user_id, { id: c.created_by_user_id, name: c.created_by_name || c.created_by_user_id }])
     ).values()
   ).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  const uniqueCompanies = Array.from(new Set(cases.map(c => c.company_name).filter(Boolean)));
+  const uniqueCompanies = Array.from(new Set(currentTabBaseCases.map(c => c.company_name).filter(Boolean)));
   
   const managerCaseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    cases.forEach(c => {
+    currentTabBaseCases.forEach(c => {
       if (c.created_by_user_id) {
         counts[c.created_by_user_id] = (counts[c.created_by_user_id] || 0) + 1;
       }
     });
     return counts;
-  }, [cases]);
+  }, [currentTabBaseCases]);
   
-  const secureVaultCount = cases.filter(c => c.visibility === 'PRIVATE').length;
+  const secureVaultCount = activeCases.filter(c => c.visibility === 'PRIVATE').length;
   
-  const totalCasesCount = cases.length;
-  const readyCount = cases.filter(c => c.quote_readiness === 'READY_FOR_QUOTE').length;
-  const analyzedCount = cases.filter(c => c.status === 'ANALYZED' && c.quote_readiness !== 'READY_FOR_QUOTE').length;
-  const pendingCount = cases.filter(c => c.status !== 'ANALYZED' && c.quote_readiness !== 'READY_FOR_QUOTE').length;
-  const pendingApprovalCount = cases.filter(c => c.visibility === 'PRIVATE_PENDING').length;
+  const totalCasesCount = activeCases.length;
+  const readyCount = activeCases.filter(c => c.quote_readiness === 'READY_FOR_QUOTE').length;
+  const analyzedCount = activeCases.filter(c => c.status === 'ANALYZED' && c.quote_readiness !== 'READY_FOR_QUOTE').length;
+  const pendingCount = activeCases.filter(c => c.status !== 'ANALYZED' && c.quote_readiness !== 'READY_FOR_QUOTE').length;
+  const pendingApprovalCount = activeCases.filter(c => c.visibility === 'PRIVATE_PENDING').length;
+  const archivedCount = archivedCases.length;
+  const trashedCount = trashedCases.length;
 
-  const totalDrawingsSum = cases.reduce((acc, c) => acc + (c.drawings_count || c.files_count || 0), 0);
-  const totalBomItemsSum = cases.reduce((acc, c) => acc + (c.bom_items_count || 0), 0);
-  const totalQuotedAmountSum = cases.reduce((acc, c) => acc + (c.quote_total_amount || 0), 0);
+  const totalDrawingsSum = activeCases.reduce((acc, c) => acc + (c.drawings_count || c.files_count || 0), 0);
+  const totalBomItemsSum = activeCases.reduce((acc, c) => acc + (c.bom_items_count || 0), 0);
+  const totalQuotedAmountSum = activeCases.reduce((acc, c) => acc + (c.quote_total_amount || 0), 0);
 
   // Filtered cases list
-  const filteredCases = cases.filter(c => {
+  const filteredCases = currentTabBaseCases.filter(c => {
     if (selectedTab === 'READY_FOR_QUOTE' && c.quote_readiness !== 'READY_FOR_QUOTE') return false;
     if (selectedTab === 'ANALYZED' && (c.status !== 'ANALYZED' || c.quote_readiness === 'READY_FOR_QUOTE')) return false;
     if (selectedTab === 'PENDING' && (c.status === 'ANALYZED' || c.quote_readiness === 'READY_FOR_QUOTE')) return false;
@@ -433,9 +598,6 @@ export default function CasesPage() {
     );
   };
 
-  const myRecentCases = user ? cases.filter(c => c.created_by_user_id === user.userId) : [];
-  const recentCase = myRecentCases.length > 0 ? myRecentCases[0] : null;
-
   return (
     <div className="space-y-3.5 w-full pb-10">
       {/* Quick Upload Progress Overlay */}
@@ -482,6 +644,8 @@ export default function CasesPage() {
             ready: readyCount,
             pendingApproval: pendingApprovalCount,
             secureVault: secureVaultCount,
+            archived: archivedCount,
+            trashed: trashedCount,
           }}
           user={user}
           onSingleUploadClick={() => fileInputRef.current?.click()}
@@ -569,49 +733,7 @@ export default function CasesPage() {
             </div>
           </div>
 
-          {/* Zone 3: Quick Resume Widget */}
-      {recentCase && (
-        <div className="bg-slate-900 text-white rounded-[4px] p-5 sm:p-6 shadow-md border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start space-x-4">
-            <div className="w-11 h-11 rounded-[3px] bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-              <Zap className="w-6 h-6 fill-white" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-blue-400 font-mono">{recentCase.case_no}</span>
-                <span className="text-xs font-bold bg-blue-900/60 text-blue-200 px-2.5 py-0.5 rounded-[3px] border border-blue-700/50">
-                  {user ? `${user.name} 영업담당님의 최근 작업 건` : '최근 작업 건'}
-                </span>
-              </div>
-              <h3 className="text-base font-extrabold text-white mt-1 line-clamp-1">
-                {recentCase.case_name}
-              </h3>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-100 mt-1.5 font-medium">
-                <span className="flex items-center space-x-1">
-                  <Building2 className="w-3.5 h-3.5 text-slate-300" />
-                  <span className="font-semibold text-white">{recentCase.company_name}</span>
-                </span>
-                <span className="text-slate-500">•</span>
-                <span>도면 <strong className="text-white font-bold">{recentCase.drawings_count || recentCase.files_count || 0}</strong>장</span>
-                <span className="text-slate-500">•</span>
-                <span>BOM 부품 <strong className="text-white font-bold">{recentCase.bom_items_count || 0}</strong>개</span>
-                <span className="text-slate-500">•</span>
-                <span className="text-blue-200 font-bold">
-                  견적액: {recentCase.quote_total_amount ? `${Number(recentCase.quote_total_amount).toLocaleString()}원` : '산출 진행 중'}
-                </span>
-              </div>
-            </div>
-          </div>
 
-          <Link
-            href={`/cases/${recentCase.id}`}
-            className="btn-hover-effect px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-[3px] text-xs font-extrabold shadow-sm transition-all flex items-center justify-center space-x-2 shrink-0 self-start md:self-auto cursor-pointer group"
-          >
-            <span>이어서 견적 작업하기</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        </div>
-      )}
 
       {/* Zone 4: Enterprise High-Density Table / Card Grid Section */}
       <div className="space-y-3.5">
@@ -683,6 +805,32 @@ export default function CasesPage() {
                 </button>
               </>
             )}
+            <span className="text-slate-300 mx-0.5">|</span>
+            {/* Archive Tab */}
+            <button
+              onClick={() => setSelectedTab('ARCHIVED')}
+              className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
+                selectedTab === 'ARCHIVED'
+                  ? 'bg-purple-700 text-white shadow-xs font-black'
+                  : 'bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-800'
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>보관함 ({archivedCount})</span>
+            </button>
+
+            {/* Trash Tab */}
+            <button
+              onClick={() => setSelectedTab('TRASHED')}
+              className={`btn-hover-effect-tab px-3 py-1.5 rounded-[3px] text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center space-x-1 ${
+                selectedTab === 'TRASHED'
+                  ? 'bg-rose-700 text-white shadow-xs font-black'
+                  : 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-800'
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>휴지통 ({trashedCount})</span>
+            </button>
           </div>
 
           {/* Right Controls: Search, Rows Per Page, View Mode Toggle */}
@@ -787,6 +935,31 @@ export default function CasesPage() {
             <span className="text-[12.5px] font-extrabold text-slate-700">견적 담당자별:</span>
           </div>
 
+          {/* 내 담당건만 보기 전용 칩 (로그인 사용자 맞춤) */}
+          {user && user.role !== 'SUPER_ADMIN' && (
+            <button
+              type="button"
+              onClick={() => setFilterManager(filterManager === user.userId ? 'ALL' : user.userId)}
+              title={`${user.name} 님의 담당 견적건만 필터링`}
+              className={`btn-hover-effect-tab inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-[4px] text-xs font-bold transition-all cursor-pointer shrink-0 border ${
+                filterManager === user.userId
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs ring-2 ring-blue-600/30 font-black'
+                  : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
+              }`}
+            >
+              <span>👤 내 담당건</span>
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  filterManager === user.userId
+                    ? 'bg-white/20 text-white'
+                    : 'bg-blue-200/80 text-blue-900'
+                }`}
+              >
+                {managerCaseCounts[user.userId] || 0}
+              </span>
+            </button>
+          )}
+
           {/* 전체 담당자 칩 */}
           <button
             type="button"
@@ -809,8 +982,10 @@ export default function CasesPage() {
             </span>
           </button>
 
-          {/* 5인 견적 담당자 개별 칩 */}
-          {uniqueManagers.map((m) => {
+          {/* 5인 견적 담당자 개별 칩 (로그인 본인은 '내 담당건'으로 앞단에 표시되므로 중복 제외) */}
+          {uniqueManagers
+            .filter((m) => !user || user.role === 'SUPER_ADMIN' || m.id !== user.userId)
+            .map((m) => {
             const theme = getManagerTheme(m.id);
             const isSelected = filterManager === m.id;
             const count = managerCaseCounts[m.id] || 0;
@@ -865,14 +1040,75 @@ export default function CasesPage() {
             </span>
 
             {selectedCaseIds.length > 0 && (
-              <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-[3px] font-bold text-xs ml-2">
-                <span>✓ {selectedCaseIds.length}건 선택됨</span>
-                <button
-                  onClick={() => setSelectedCaseIds([])}
-                  className="text-xs underline hover:text-blue-900 cursor-pointer ml-1 font-semibold"
-                >
-                  선택 해제
-                </button>
+              <div className="flex items-center flex-wrap gap-2 ml-2">
+                <div className="flex items-center space-x-2 bg-blue-100 text-blue-900 px-2.5 py-1 rounded-[3px] font-bold text-xs">
+                  <span>✓ {selectedCaseIds.length}건 선택됨</span>
+                  <button
+                    onClick={() => setSelectedCaseIds([])}
+                    className="text-xs underline hover:text-blue-950 cursor-pointer ml-1 font-semibold"
+                  >
+                    선택 해제
+                  </button>
+                </div>
+
+                {selectedTab === 'ARCHIVED' ? (
+                  <>
+                    <button
+                      onClick={() => handleRestoreCases(selectedCaseIds)}
+                      disabled={lifecycleLoading}
+                      className="btn-hover-effect-tab px-2.5 py-1 rounded-[3px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>선택건 작업 복원</span>
+                    </button>
+                    <button
+                      onClick={() => handleTrashCases(selectedCaseIds)}
+                      disabled={lifecycleLoading}
+                      className="btn-hover-effect-tab px-2.5 py-1 rounded-[3px] bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>선택건 휴지통 이동</span>
+                    </button>
+                  </>
+                ) : selectedTab === 'TRASHED' ? (
+                  <>
+                    <button
+                      onClick={() => handleRestoreCases(selectedCaseIds)}
+                      disabled={lifecycleLoading}
+                      className="btn-hover-effect-tab px-2.5 py-1 rounded-[3px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>선택건 복원</span>
+                    </button>
+                    <button
+                      onClick={() => handlePermanentDeleteCases(selectedCaseIds)}
+                      disabled={lifecycleLoading}
+                      className="btn-hover-effect-tab px-2.5 py-1 rounded-[3px] bg-red-700 hover:bg-red-800 text-white font-bold text-xs flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash className="w-3.5 h-3.5" />
+                      <span>선택건 영구 삭제</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => openArchiveModal(selectedCaseIds)}
+                      disabled={lifecycleLoading}
+                      className="btn-hover-effect-tab px-2.5 py-1 rounded-[3px] bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>선택건 보관함 이동</span>
+                    </button>
+                    <button
+                      onClick={() => handleTrashCases(selectedCaseIds)}
+                      disabled={lifecycleLoading}
+                      className="btn-hover-effect-tab px-2.5 py-1 rounded-[3px] bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center space-x-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>선택건 삭제 (휴지통)</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1039,15 +1275,20 @@ export default function CasesPage() {
                             <div className="flex items-center space-x-2">
                               <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1 text-[13.5px]">
                                 {c.case_name}
-                                </span>
-                                {c.visibility === 'SHARED' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 shrink-0">사내 공유중</span>}
-                                {c.visibility === 'PRIVATE_PENDING' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">비공개 심사</span>}
-                                {c.visibility === 'PRIVATE' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 shrink-0">공개 불가</span>}
-                              {c.id === recentCase?.id && (
-                                <span className="px-2 py-0.5 rounded-[2px] text-[11px] font-bold bg-blue-100 text-blue-700 shrink-0">
-                                  최근
+                              </span>
+                              {c.lifecycle_status === 'ARCHIVED' && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 shrink-0">
+                                  📦 보관 ({c.archive_reason || '보류'})
                                 </span>
                               )}
+                              {c.lifecycle_status === 'TRASHED' && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+                                  🗑️ 휴지통
+                                </span>
+                              )}
+                              {c.visibility === 'SHARED' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 shrink-0">사내 공유중</span>}
+                              {c.visibility === 'PRIVATE_PENDING' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">비공개 심사</span>}
+                              {c.visibility === 'PRIVATE' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 shrink-0">공개 불가</span>}
                             </div>
                           </td>
 
@@ -1056,11 +1297,19 @@ export default function CasesPage() {
                             <div className="space-y-0.5">
                               <div className="font-bold text-slate-900 flex items-center space-x-1.5 text-[13px]">
                                 <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                <span className="truncate max-w-[170px]">{c.company_name}</span>
+                                {c.company_id === 'comp_unassigned' || c.company_name === '고객사 미지정' ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                    ⚠️ 고객사 미지정
+                                  </span>
+                                ) : (
+                                  <span className="truncate max-w-[170px]">{c.company_name}</span>
+                                )}
                               </div>
                               <div className="text-xs text-slate-700 font-medium flex items-center space-x-1.5">
                                 <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                <span className="truncate max-w-[170px]">{c.project_name}</span>
+                                <span className="truncate max-w-[170px]">
+                                  {c.company_id === 'comp_unassigned' ? '도면 분석 대기 (프로젝트 미정)' : c.project_name}
+                                </span>
                               </div>
                             </div>
                           </td>
@@ -1142,13 +1391,74 @@ export default function CasesPage() {
 
                           {/* Actions */}
                           <td className="py-3 px-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <Link
-                              href={`/cases/${c.id}`}
-                              className="btn-hover-effect-tab inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-[3px] bg-slate-100 hover:bg-blue-600 text-slate-800 hover:text-white font-bold text-xs transition-all shadow-2xs group"
-                            >
-                              <span>상세</span>
-                              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                            </Link>
+                            <div className="flex items-center justify-center space-x-1.5">
+                              <Link
+                                href={`/cases/${c.id}`}
+                                className="btn-hover-effect-tab inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-[3px] bg-slate-100 hover:bg-blue-600 text-slate-800 hover:text-white font-bold text-xs transition-all shadow-2xs group"
+                              >
+                                <span>상세</span>
+                                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                              </Link>
+
+                              {selectedTab === 'ARCHIVED' || c.lifecycle_status === 'ARCHIVED' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreCases([c.id])}
+                                    title="작업 활성 상태로 복원"
+                                    className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTrashCases([c.id])}
+                                    title="휴지통으로 이동"
+                                    className="p-1.5 text-rose-700 hover:bg-rose-50 rounded border border-rose-300 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              ) : selectedTab === 'TRASHED' || c.lifecycle_status === 'TRASHED' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreCases([c.id])}
+                                    title="견적건 복원"
+                                    className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePermanentDeleteCases([c.id])}
+                                    title="완전 영구 삭제"
+                                    className="p-1.5 text-red-700 hover:bg-red-50 rounded border border-red-300 transition-colors cursor-pointer"
+                                  >
+                                    <Trash className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openArchiveModal([c.id])}
+                                    title="견적건 보관함으로 이동 (보류/이력)"
+                                    className="p-1.5 text-purple-700 hover:bg-purple-50 rounded border border-purple-300 transition-colors cursor-pointer"
+                                  >
+                                    <Archive className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTrashCases([c.id])}
+                                    title="견적건 삭제 (휴지통으로 이동)"
+                                    className="p-1.5 text-rose-700 hover:bg-rose-50 rounded border border-rose-300 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1205,10 +1515,20 @@ export default function CasesPage() {
                             <h3 className="font-extrabold text-slate-900 text-base group-hover:text-blue-600 transition-colors line-clamp-2 mb-1">
                               {c.case_name}
                             </h3>
-                            <div className="mb-3">
-                              {c.visibility === 'SHARED' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 shrink-0 mr-1">사내 공유중</span>}
-                              {c.visibility === 'PRIVATE_PENDING' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0 mr-1">비공개 심사</span>}
-                              {c.visibility === 'PRIVATE' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 shrink-0 mr-1">공개 불가</span>}
+                            <div className="mb-3 flex flex-wrap items-center gap-1">
+                              {c.lifecycle_status === 'ARCHIVED' && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 shrink-0">
+                                  📦 보관 ({c.archive_reason || '보류'})
+                                </span>
+                              )}
+                              {c.lifecycle_status === 'TRASHED' && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+                                  🗑️ 휴지통
+                                </span>
+                              )}
+                              {c.visibility === 'SHARED' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 shrink-0">사내 공유중</span>}
+                              {c.visibility === 'PRIVATE_PENDING' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">비공개 심사</span>}
+                              {c.visibility === 'PRIVATE' && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 shrink-0">공개 불가</span>}
                             </div>
                           </div>
 
@@ -1216,11 +1536,19 @@ export default function CasesPage() {
                       <div className="space-y-1.5 text-xs text-slate-700 border-t border-slate-100 pt-3 mb-4">
                         <div className="flex items-center space-x-2">
                           <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span className="font-bold text-slate-900 truncate">{c.company_name}</span>
+                          {c.company_id === 'comp_unassigned' || c.company_name === '고객사 미지정' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                              ⚠️ 고객사 미지정
+                            </span>
+                          ) : (
+                            <span className="font-bold text-slate-900 truncate">{c.company_name}</span>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2">
                           <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span className="truncate font-medium text-slate-700">{c.project_name}</span>
+                          <span className="truncate font-medium text-slate-700">
+                            {c.company_id === 'comp_unassigned' ? '프로젝트 미정' : c.project_name}
+                          </span>
                         </div>
                         <div className="flex items-center space-x-2 text-slate-600 font-medium">
                           <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
@@ -1268,10 +1596,73 @@ export default function CasesPage() {
                       </div>
                     </div>
 
-                    {/* Action Link Footer */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-extrabold text-blue-600 group-hover:translate-x-0.5 transition-transform">
-                      <span>상세 워크벤치 진입</span>
-                      <ArrowRight className="w-4 h-4" />
+                    {/* Action Link Footer & Lifecycle Controls */}
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-1.5 text-xs font-extrabold text-blue-600 group-hover:translate-x-0.5 transition-transform">
+                        <span>상세 워크벤치 진입</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </div>
+
+                      <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {selectedTab === 'ARCHIVED' || c.lifecycle_status === 'ARCHIVED' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRestoreCases([c.id]); }}
+                              title="작업 활성 상태로 복원"
+                              className="p-1 text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleTrashCases([c.id]); }}
+                              title="휴지통으로 이동"
+                              className="p-1 text-rose-700 hover:bg-rose-50 rounded border border-rose-300 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : selectedTab === 'TRASHED' || c.lifecycle_status === 'TRASHED' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRestoreCases([c.id]); }}
+                              title="견적건 복원"
+                              className="p-1 text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePermanentDeleteCases([c.id]); }}
+                              title="완전 영구 삭제"
+                              className="p-1 text-red-700 hover:bg-red-50 rounded border border-red-300 transition-colors cursor-pointer"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openArchiveModal([c.id]); }}
+                              title="보관함으로 이동 (보류/이력)"
+                              className="p-1 text-purple-700 hover:bg-purple-50 rounded border border-purple-200 transition-colors cursor-pointer"
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleTrashCases([c.id]); }}
+                              title="휴지통으로 이동 (삭제)"
+                              className="p-1 text-rose-600 hover:bg-rose-50 rounded border border-rose-200 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </Link>
                 );
@@ -1427,6 +1818,102 @@ export default function CasesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Reason Modal */}
+      {archiveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-[6px] shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-4 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <Archive className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">견적건 보관함 이동</h3>
+                  <p className="text-xs text-purple-800">
+                    선택된 {archiveTargetIds.length}건을 보관함으로 이동합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setArchiveModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">보관 사유 선택</label>
+                <div className="space-y-2">
+                  {[
+                    '고객사 일정/품의 지연 (잠정 보류)',
+                    '도면 개정(Rev 변경) 대기 / 구버전 보관',
+                    '견적 산출 완료 후 수주/실주 이력 보관',
+                    'CUSTOM'
+                  ].map((option) => (
+                    <label
+                      key={option}
+                      className={`flex items-center space-x-2.5 p-2.5 rounded border text-xs cursor-pointer transition-colors ${
+                        archiveReasonType === option
+                          ? 'bg-purple-50 border-purple-400 font-bold text-purple-900'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="archiveReason"
+                        checked={archiveReasonType === option}
+                        onChange={() => setArchiveReasonType(option)}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>{option === 'CUSTOM' ? '기타 사유 직접 입력' : option}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {archiveReasonType === 'CUSTOM' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">직접 입력</label>
+                  <input
+                    type="text"
+                    value={archiveCustomReason}
+                    onChange={(e) => setArchiveCustomReason(e.target.value)}
+                    placeholder="보관 사유를 입력하세요 (예: 11월 재검토 등)"
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+              )}
+
+              <div className="p-3 bg-slate-50 rounded border border-slate-200 text-slate-600 text-[11px] leading-relaxed">
+                💡 <strong>안내:</strong> 보관함으로 이동된 건은 메인 진행 목록에서 숨겨지며, 상단의 <strong>‘📦 보관함’</strong> 탭에서 언제든 즉시 작업 활성 상태로 복원할 수 있습니다.
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setArchiveModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmArchive}
+                disabled={lifecycleLoading}
+                className="px-4 py-1.5 text-xs font-bold bg-purple-700 hover:bg-purple-800 text-white rounded shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>{lifecycleLoading ? '처리 중...' : '보관함으로 이동'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
