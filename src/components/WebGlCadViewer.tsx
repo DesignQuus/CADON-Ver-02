@@ -1193,41 +1193,43 @@ export default function WebGlCadViewer({
             )}
           </div>
 
-          {/* OCR Trigger & Result Badge */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleTriggerOcr}
-              disabled={ocrLoading}
-              className="bg-slate-950/90 hover:bg-slate-800 text-cyan-300 hover:text-cyan-100 border border-cyan-500/40 px-2.5 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              title="도면 표제란 이미지(D&I Solution 로고)에 대한 AI OCR 분석을 수행합니다"
-            >
-              <Scan className={`w-3.5 h-3.5 ${ocrLoading ? 'animate-spin text-cyan-400' : 'text-cyan-400'}`} />
-              <span>{ocrLoading ? 'AI OCR 분석 중...' : '래스터 AI OCR 분석'}</span>
-            </button>
+          {/* OCR Trigger & Result Badge (Only if genuine rasters exist) */}
+          {rasterCount > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleTriggerOcr}
+                disabled={ocrLoading}
+                className="bg-slate-950/90 hover:bg-slate-800 text-cyan-300 hover:text-cyan-100 border border-cyan-500/40 px-2.5 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                title="도면 표제란 이미지에 대한 AI OCR 분석을 수행합니다"
+              >
+                <Scan className={`w-3.5 h-3.5 ${ocrLoading ? 'animate-spin text-cyan-400' : 'text-cyan-400'}`} />
+                <span>{ocrLoading ? 'AI OCR 분석 중...' : '래스터 AI OCR 분석'}</span>
+              </button>
 
-            {ocrResult && (
-              <div className="bg-slate-950/95 border border-emerald-500/50 px-2 py-1 rounded-lg text-[11px] text-emerald-300 flex items-center gap-1.5 shadow-md animate-in fade-in">
-                <button
-                  onClick={() => setShowOcrModal(true)}
-                  className="flex items-center gap-1.5 hover:text-emerald-100 transition-colors cursor-pointer text-left"
-                  title="클릭하여 AI OCR 상세 분석 데이터 확인 및 도면 이동"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>인식: <strong>{ocrResult.detectedText}</strong> (신뢰도 {Math.round(ocrResult.confidence * 100)}%)</span>
-                  <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 px-1 py-0.2 rounded font-sans ml-1 hover:bg-emerald-900">
-                    상세보기
-                  </span>
-                </button>
-                <button
-                  onClick={() => { setOcrResult(null); setShowOcrModal(false); }}
-                  className="text-slate-500 hover:text-slate-300 ml-1 cursor-pointer"
-                  title="닫기"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-          </div>
+              {ocrResult && (
+                <div className="bg-slate-950/95 border border-emerald-500/50 px-2 py-1 rounded-lg text-[11px] text-emerald-300 flex items-center gap-1.5 shadow-md animate-in fade-in">
+                  <button
+                    onClick={() => setShowOcrModal(true)}
+                    className="flex items-center gap-1.5 hover:text-emerald-100 transition-colors cursor-pointer text-left"
+                    title="클릭하여 AI OCR 상세 분석 데이터 확인 및 도면 이동"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>인식: <strong>{ocrResult.detectedText}</strong> (신뢰도 {Math.round(ocrResult.confidence * 100)}%)</span>
+                    <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 px-1 py-0.2 rounded font-sans ml-1 hover:bg-emerald-900">
+                      상세보기
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => { setOcrResult(null); setShowOcrModal(false); }}
+                    className="text-slate-500 hover:text-slate-300 ml-1 cursor-pointer"
+                    title="닫기"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

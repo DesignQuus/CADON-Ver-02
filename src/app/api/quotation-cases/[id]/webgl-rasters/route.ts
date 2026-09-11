@@ -52,24 +52,7 @@ export async function GET(
     }
   }
 
-  // If no rasters extracted from DXF, provide standard D&I Solution logo location for A3 title block
-  if (rasters.length === 0) {
-    rasters.push({
-      id: 'raster_logo',
-      type: 'LOGO',
-      x: 1886.9,
-      y: 98.2,
-      width: 380.0,
-      height: 86.0,
-      src: '/images/dni_solution_logo.png',
-      label: 'D&I Solution'
-    });
-  } else {
-    rasters = rasters.map((r) => ({
-      ...r,
-      src: r.src || '/images/dni_solution_logo.png'
-    }));
-  }
-
+  // Only return genuine rasters extracted from CAD file
+  // Never inject dummy / hardcoded logos
   return NextResponse.json({ rasters });
 }
