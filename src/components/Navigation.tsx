@@ -72,7 +72,7 @@ export default function Navigation() {
               title="견적의뢰 관리 메인 목록(대시보드)으로 이동"
             >
               <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-              <span>← 견적 메인목록</span>
+              <span>견적 메인목록</span>
             </Link>
           )}
 

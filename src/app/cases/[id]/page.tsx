@@ -1836,7 +1836,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
             title="견적의뢰 관리 메인 목록(대시보드)으로 돌아가기"
           >
             <ArrowLeft className="w-4 h-4 text-blue-600 transition-transform group-hover:-translate-x-1" />
-            <span>← 견적의뢰 메인 목록으로</span>
+            <span>견적의뢰 메인 목록으로</span>
           </Link>
           <span className="text-slate-300">|</span>
           <nav className="flex items-center space-x-1.5 text-xs text-slate-500 font-medium">
