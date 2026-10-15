@@ -46,6 +46,7 @@ import {
   Trash,
   AlertTriangle
 } from 'lucide-react';
+import { apiFetch, getEgdeskBasePath } from '@/lib/api';
 
 type SortField = 'date' | 'amount' | 'drawings' | 'bom' | 'case_no' | 'case_name';
 type SortDirection = 'asc' | 'desc';
@@ -191,9 +192,9 @@ export default function CasesPage() {
 
   const fetchCases = async () => {
     try {
-      const res = await fetch('/api/quotation-cases');
+      const res = await apiFetch('/api/quotation-cases');
       if (res.status === 401) {
-        window.location.href = '/login';
+        window.location.href = `${getEgdeskBasePath()}/login`;
         return;
       }
       if (res.ok) {
@@ -209,7 +210,7 @@ export default function CasesPage() {
 
   useEffect(() => {
     fetchCases();
-    fetch('/api/auth/me')
+    apiFetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : { user: null }))
       .then((data) => {
         setUser(data.user);
@@ -234,7 +235,7 @@ export default function CasesPage() {
     const finalReason = archiveReasonType === 'CUSTOM' ? (archiveCustomReason.trim() || '기타 보관') : archiveReasonType;
     setLifecycleLoading(true);
     try {
-      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+      const res = await apiFetch('/api/quotation-cases/bulk-lifecycle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -265,7 +266,7 @@ export default function CasesPage() {
     }
     setLifecycleLoading(true);
     try {
-      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+      const res = await apiFetch('/api/quotation-cases/bulk-lifecycle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -291,7 +292,7 @@ export default function CasesPage() {
     if (ids.length === 0) return;
     setLifecycleLoading(true);
     try {
-      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+      const res = await apiFetch('/api/quotation-cases/bulk-lifecycle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -320,7 +321,7 @@ export default function CasesPage() {
     }
     setLifecycleLoading(true);
     try {
-      const res = await fetch('/api/quotation-cases/bulk-lifecycle', {
+      const res = await apiFetch('/api/quotation-cases/bulk-lifecycle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -362,7 +363,7 @@ export default function CasesPage() {
       // 1. Create a new case automatically
       const cleanName = file.name.replace(/\.[^/.]+$/, "");
       const autoCaseName = `${cleanName} 견적의뢰 (DWG 자동분석)`;
-      const createRes = await fetch('/api/quotation-cases', {
+      const createRes = await apiFetch('/api/quotation-cases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -383,7 +384,7 @@ export default function CasesPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const uploadRes = await fetch(`/api/quotation-cases/${newCaseId}/upload`, {
+      const uploadRes = await apiFetch(`/api/quotation-cases/${newCaseId}/upload`, {
         method: 'POST',
         body: formData
       });
@@ -396,7 +397,7 @@ export default function CasesPage() {
       // 3. Automatically analyze CAD drawing so WebGL binary & drawing sheets are fully generated!
       setQuickUploadStatus(`'${file.name}' CAD 도면 자동 분석 및 WebGL 렌더링 준비 중...`);
       try {
-        await fetch(`/api/quotation-cases/${newCaseId}/analyze`, {
+        await apiFetch(`/api/quotation-cases/${newCaseId}/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileId: uploadJson.file.id })
@@ -434,7 +435,7 @@ export default function CasesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch('/api/quotation-cases', {
+      const res = await apiFetch('/api/quotation-cases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyId, projectId, caseName })

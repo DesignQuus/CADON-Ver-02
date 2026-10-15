@@ -19,6 +19,7 @@ import {
   Calendar,
   AlertCircle
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -48,7 +49,7 @@ export default function AuditLogsPage() {
       if (selectedType) params.set('activityType', selectedType);
       if (searchQuery) params.set('search', searchQuery);
 
-      const res = await fetch(`/api/admin/audit-logs?${params.toString()}`);
+      const res = await apiFetch(`/api/admin/audit-logs?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
