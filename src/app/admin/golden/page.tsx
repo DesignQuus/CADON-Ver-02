@@ -14,7 +14,7 @@ export default function GoldenDatasetPage() {
       const res = await apiFetch('/api/golden/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goldenCaseId: 'gcase_001' })
+        body: JSON.stringify({})
       });
       const json = await res.json();
       if (res.ok) {

@@ -1056,14 +1056,14 @@ export default function CadViewer({
           info.quantity ?? 1,
           info.unitPrice ?? 0,
           info.amount ?? 0,
-          d.project_name || '인버터 조립 LINE',
-          d.customer || 'A&G/보그워너',
-          d.designer || '이경중',
-          d.design_date || '24.03.15',
+          d.project_name || '',
+          d.customer || '',
+          d.designer || '',
+          d.design_date || '',
           d.scale || '1/1',
           d.revision || 'R00',
           d.material || 'SS400',
-          d.company || '세창인터내쇼날(주)'
+          d.company || ''
         ];
       });
 
@@ -2338,18 +2338,18 @@ export default function CadViewer({
                         </td>
 
                         {/* Project Name */}
-                        <td className="py-2 px-3 border-r border-slate-800/70 font-sans text-slate-300 truncate max-w-[140px]" title="인버터 조립 LINE">
-                          {d.project_name || '인버터 조립 LINE'}
+                        <td className="py-2 px-3 border-r border-slate-800/70 font-sans text-slate-300 truncate max-w-[140px]" title={d.project_name || ''}>
+                          {d.project_name || '-'}
                         </td>
 
                         {/* 고객사 */}
                         <td className="py-2 px-3 border-r border-slate-800/70 font-sans text-amber-200">
-                          {d.customer || 'A&G/보그워너'}
+                          {d.customer || '-'}
                         </td>
 
                         {/* 설계자 */}
                         <td className="py-2 px-3 border-r border-slate-800/70 font-sans text-slate-300">
-                          {d.designer || '이경중'} <span className="text-slate-500 text-[10.5px]">({d.design_date || '24.03.15'})</span>
+                          {d.designer || '-'} <span className="text-slate-500 text-[10.5px]">({d.design_date || '-'})</span>
                         </td>
 
                         {/* 축척 / Rev */}

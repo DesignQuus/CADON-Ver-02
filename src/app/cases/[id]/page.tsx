@@ -521,8 +521,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          companyId: qc?.company_id || 'comp_sechang',
-          projectId: qc?.project_id || 'proj_sechang',
+          companyId: qc?.company_id || 'comp_unassigned',
+          projectId: qc?.project_id || 'proj_unassigned',
           caseName: autoCaseName
         })
       });
@@ -3604,9 +3604,9 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                       </div>
                       <div className="text-slate-800 font-bold text-xs group-hover:text-blue-900 transition-colors">{d.drawing_name_raw}</div>
                       <div className="text-[11px] text-slate-500 pt-1 border-t border-blue-100 flex items-center justify-between">
-                        <span>프로젝트: {d.project_name || '인버터 조립 LINE'}</span>
+                        <span>프로젝트: {d.project_name || '-'}</span>
                         <span className="flex items-center space-x-0.5 text-blue-600 font-medium">
-                          <span>설계: {d.designer || '이경중'} | {d.scale || '1/5'}</span>
+                          <span>설계: {d.designer || '-'} | {d.scale || '-'}</span>
                           <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                         </span>
                       </div>

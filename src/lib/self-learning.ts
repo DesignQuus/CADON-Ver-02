@@ -148,7 +148,7 @@ export function learnOrUpdateMaterialPrice(params: LearnMaterialParams): { succe
         remark || '도면 검수 승인 자동 학습',
         params.companyId || null,
         params.quotationCaseId || null,
-        params.userId || 'usr_admin',
+        params.userId || null,
         now
       );
 

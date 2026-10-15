@@ -168,7 +168,7 @@ export async function POST(
         file_size, export_status, is_draft, exported_by_user_id, exported_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      exportId, quote.id, quote.quote_version, template?.id || 'tmpl_001',
+      exportId, quote.id, quote.quote_version, template?.id || 'DEFAULT',
       exportFileName, outputPath, result.file_size || 5000,
       'COMPLETED', quote.status === 'APPROVED' ? 0 : 1,
       session.userId, now

@@ -90,13 +90,13 @@ def extract_title_blocks_hierarchical(cad_data: dict, frames_data: dict) -> dict
         
         name = None
         mat = "SS400"
-        customer = "A&G/보그워너"
-        designer = "이경중"
-        design_date = "24.03.15"
+        customer = ""
+        designer = ""
+        design_date = ""
         scale = "1 / 1"
         rev = "R00"
-        company = "세창인터내쇼날(주) Sechang International Co.,Ltd."
-        proj_name = "인버터 조립 LINE"
+        company = ""
+        proj_name = ""
         
         for t in tb_texts:
             txt = t["text"].strip()

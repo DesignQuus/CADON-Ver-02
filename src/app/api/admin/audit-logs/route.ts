@@ -70,8 +70,11 @@ export async function GET(req: NextRequest) {
       quoteToggles: number;
     };
 
+    const users = db.prepare('SELECT id, name FROM users ORDER BY name ASC').all();
+
     return NextResponse.json({
       success: true,
+      users,
       logs,
       total,
       page,

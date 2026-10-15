@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const { goldenCaseId } = await req.json();
-    const gcase = db.prepare('SELECT * FROM golden_cases WHERE id = ?').get(goldenCaseId || 'gcase_001') as any;
+    const gcase = (goldenCaseId
+      ? db.prepare('SELECT * FROM golden_cases WHERE id = ?').get(goldenCaseId)
+      : db.prepare('SELECT * FROM golden_cases ORDER BY created_at DESC LIMIT 1').get()) as any;
     if (!gcase) {
-      return NextResponse.json({ error: 'Golden Case를 찾을 수 없습니다.' }, { status: 404 });
+      return NextResponse.json({ error: '등록된 Golden Case가 없습니다. 정답 세트를 먼저 등록하세요.' }, { status: 404 });
     }
 
     const qcId = gcase.quotation_case_id;
