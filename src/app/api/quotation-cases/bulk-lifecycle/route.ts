@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { recordActivity } from '@/lib/audit';
-import { resolveStoragePath, getStorageSubdir } from '@/lib/storage';
+import { resolveStoragePath, getStorageSubdir, getDerivedSearchDirs } from '@/lib/storage';
 import fs from 'fs';
 import path from 'path';
 
@@ -124,11 +124,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const derivedDirs = [
-          getStorageSubdir('derived'),
-          path.join(process.cwd(), 'storage', 'derived'),
-          path.join(process.env.APPDATA || '', 'egdesk', 'user-data', 'development', 'projects', '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f', 'storage', 'derived')
-        ];
+        const derivedDirs = getDerivedSearchDirs();
 
         for (const dDir of derivedDirs) {
           if (fs.existsSync(dDir)) {

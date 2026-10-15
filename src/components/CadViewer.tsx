@@ -429,7 +429,7 @@ export default function CadViewer({
       const data = await res.json();
       if (res.ok) {
         setOpenedFolderInfo({
-          path: data.filePath || 'C:\\Users\\SteveLee\\OneDrive\\Desktop\\DWG 모음\\test.dwg',
+          path: data.filePath || '',
           name: data.fileName || 'test.dwg'
         });
         setCadStatusMsg(data.message || '도면 파일 위치를 윈도우 탐색기로 열었습니다.');

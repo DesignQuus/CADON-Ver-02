@@ -1,17 +1,14 @@
 import path from 'path';
 import fs from 'fs';
+import { getEgdeskProjectDir } from './paths';
 
 export function getEgdeskStorageDir(): string {
   if (process.env.EGDESK_STORAGE_DIR && fs.existsSync(process.env.EGDESK_STORAGE_DIR)) {
     return process.env.EGDESK_STORAGE_DIR;
   }
 
-  const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
-  const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
-  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
-  
-  const egdeskProjectDir = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId);
-  if (fs.existsSync(egdeskProjectDir)) {
+  const egdeskProjectDir = getEgdeskProjectDir();
+  if (egdeskProjectDir) {
     const egdeskStorage = path.join(egdeskProjectDir, 'storage');
     if (!fs.existsSync(egdeskStorage)) {
       fs.mkdirSync(egdeskStorage, { recursive: true });
@@ -34,6 +31,21 @@ export function getStorageSubdir(subdir: 'files' | 'derived' | 'exports' | 'temp
     fs.mkdirSync(dir, { recursive: true });
   }
   return dir;
+}
+
+/** EGDesk 프로젝트의 derived 디렉터리. EGDesk 프로젝트가 없으면 로컬 derived 와 동일. */
+export function getEgdeskDerivedDir(): string {
+  const projectDir = getEgdeskProjectDir();
+  return projectDir ? path.join(projectDir, 'storage', 'derived') : getStorageSubdir('derived');
+}
+
+/** 파생 파일을 찾거나 지울 때 훑어야 하는 derived 디렉터리 후보(중복 제거). */
+export function getDerivedSearchDirs(): string[] {
+  return Array.from(new Set([
+    getStorageSubdir('derived'),
+    path.join(process.cwd(), 'storage', 'derived'),
+    getEgdeskDerivedDir(),
+  ]));
 }
 
 export function resolveStoragePath(storedPath: string): string {

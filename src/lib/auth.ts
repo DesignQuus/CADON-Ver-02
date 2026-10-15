@@ -3,9 +3,22 @@ import { cookies } from 'next/headers';
 import { db } from './db';
 import bcrypt from 'bcryptjs';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'cadon-bom-secret-key-super-secure-production-2026'
-);
+const DEV_ONLY_JWT_SECRET = 'dev-only-insecure-secret-do-not-use-in-production';
+let cachedJwtSecret: Uint8Array | null = null;
+
+function getJwtSecret(): Uint8Array {
+  if (cachedJwtSecret) return cachedJwtSecret;
+  let secret = process.env.JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET 환경변수가 설정되지 않았습니다.');
+    }
+    console.warn('[auth] JWT_SECRET 미설정: 개발용 임시 키를 사용합니다.');
+    secret = DEV_ONLY_JWT_SECRET;
+  }
+  cachedJwtSecret = new TextEncoder().encode(secret);
+  return cachedJwtSecret;
+}
 
 export interface UserSession {
   userId: string;
@@ -20,7 +33,7 @@ export async function createSession(user: UserSession): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 
   const cookieStore = await cookies();
   cookieStore.set('cadon_session', token, {
@@ -40,7 +53,7 @@ export async function getSession(): Promise<UserSession | null> {
     const token = cookieStore.get('cadon_session')?.value;
     if (!token) return null;
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as UserSession;
   } catch {
     return null;

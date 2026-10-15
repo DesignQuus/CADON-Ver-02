@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { resolveStoragePath } from '@/lib/storage';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
@@ -10,7 +11,7 @@ import { resolveExecutable } from '@/lib/cad-resolver';
 // Smart Locator: Find the user's original desktop file
 function findOriginalFileOnUserPc(fileName: string): string | null {
   if (!fileName) return null;
-  const userProfile = process.env.USERPROFILE || 'C:\\Users\\SteveLee';
+  const userProfile = process.env.USERPROFILE || os.homedir();
   const candidates = [
     path.join(userProfile, 'OneDrive', 'Desktop', 'DWG 모음', fileName),
     path.join(userProfile, 'Desktop', 'DWG 모음', fileName),

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { getEgdeskProjectDir } from './paths';
 
 export function resolveDatabasePath(): string {
   // 1. Explicit override via env
@@ -9,14 +10,11 @@ export function resolveDatabasePath(): string {
     return process.env.EGDESK_USER_DATA_DB_PATH;
   }
 
-  // 2. EGDesk project user_data.db in APPDATA
-  const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
-  const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
-  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
-  
-  const egdeskDbPath = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'user_data.db');
-  if (fs.existsSync(egdeskDbPath)) {
-    return egdeskDbPath;
+  // 2. EGDesk project user_data.db
+  const projectDir = getEgdeskProjectDir();
+  if (projectDir) {
+    const egdeskDbPath = path.join(projectDir, 'user_data.db');
+    if (fs.existsSync(egdeskDbPath)) return egdeskDbPath;
   }
 
   // 3. Fallback to local storage/cadon_bom.db

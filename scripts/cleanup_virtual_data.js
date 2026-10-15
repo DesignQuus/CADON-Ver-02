@@ -2,7 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const dbPath = 'C:\\Users\\SteveLee\\AppData\\Roaming\\egdesk\\user-data\\development\\projects\\5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f\\user_data.db';
+// 사용법: node scripts/cleanup_virtual_data.js <user_data.db 경로>
+//        (또는 EGDESK_USER_DATA_DB_PATH 환경변수)
+const dbPath = process.argv[2] || process.env.EGDESK_USER_DATA_DB_PATH;
+if (!dbPath || !fs.existsSync(dbPath)) {
+  console.error('❌ DB 경로가 없거나 파일이 존재하지 않습니다:', dbPath || '(미지정)');
+  process.exit(1);
+}
 
 // 1. 안전 백업 생성
 const backupPath = dbPath + '.bak_before_cleanup_' + Date.now();

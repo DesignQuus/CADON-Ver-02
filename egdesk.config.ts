@@ -8,7 +8,8 @@
 export const EGDESK_CONFIG = {
   apiUrl: 'http://localhost:8080',
   tunnelUrl: 'https://tunneling-service.onrender.com/t/lee-mac-pc',
-  apiKey: '1468e8f0-0b9b-447c-b5b0-d7c9a29817d8',
+  // 키는 코드에 넣지 않고 환경변수로만 주입한다 (EGDesk 가 개발 서버 시작 시 설정)
+  apiKey: process.env.NEXT_PUBLIC_EGDESK_API_KEY ?? '',
 } as const;
 
 export interface TableDefinition {
