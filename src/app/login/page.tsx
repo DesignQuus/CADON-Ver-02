@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   Check
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface DemoUser {
   id: string;
@@ -103,7 +104,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ loginId, password: pass })

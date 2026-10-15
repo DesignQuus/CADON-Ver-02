@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import CadViewer from '@/components/CadViewer';
 import QuotationDocumentPreview from '@/components/QuotationDocumentPreview';
+import { apiFetch, getEgdeskBasePath } from '@/lib/api';
 
 
 
@@ -69,7 +70,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       : detailArchiveReasonType;
     setDetailLifecycleLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/lifecycle`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'ARCHIVE', reason: finalReason })
@@ -92,7 +93,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (!confirm('이 견적건을 휴지통으로 이동하시겠습니까?\n휴지통으로 이동된 건은 견적 목록에서 제외되며 언제든 복원할 수 있습니다.')) return;
     setDetailLifecycleLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/lifecycle`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'TRASH' })
@@ -113,7 +114,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const handleRestoreCase = async () => {
     setDetailLifecycleLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/lifecycle`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'RESTORE' })
@@ -136,7 +137,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (!confirm('정말 최종적으로 영구 삭제하시겠습니까?')) return;
     setDetailLifecycleLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/lifecycle`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/lifecycle`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'PERMANENT_DELETE' })
@@ -159,7 +160,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setShowCompanyModal(true);
     setInputCompanyName(data?.case?.company_id === 'comp_unassigned' || data?.case?.company_name === '고객사 미지정' ? '' : (data?.case?.company_name || ''));
     try {
-      const res = await fetch('/api/companies');
+      const res = await apiFetch('/api/companies');
       if (res.ok) {
         const json = await res.json();
         setExistingCompanies((json.companies || []).filter((c: any) => c.id !== 'comp_unassigned' && c.company_name !== '고객사 미지정'));
@@ -176,7 +177,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
     setSavingCompany(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName: inputCompanyName.trim() })
@@ -212,7 +213,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setShowLearnedModal(true);
     setLoadingLearnedPool(true);
     try {
-      const res = await fetch('/api/manual-prices?mode=ALL_LEARNED');
+      const res = await apiFetch('/api/manual-prices?mode=ALL_LEARNED');
       if (res.ok) {
         const json = await res.json();
         setLearnedPoolList(json.list || []);
@@ -279,7 +280,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
     setRequestingApproval(true);
     try {
-      const res = await fetch('/api/approvals', {
+      const res = await apiFetch('/api/approvals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -310,7 +311,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (actionLoading) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/bypass-approval`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/bypass-approval`, {
         method: 'POST'
       });
       const resJson = await res.json();
@@ -337,7 +338,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (!id || archivingSnapshot) return;
     setArchivingSnapshot(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/archive-snapshot`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/archive-snapshot`, {
         method: 'POST'
       });
       const dataRes = await res.json();
@@ -356,7 +357,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   // 📦 Export Package Download (Step 3 최종 패키지 ZIP 다운로드)
   const handleDownloadZip = () => {
     if (!id) return;
-    window.open(`/api/quotation-cases/${id}/export-package`, '_blank');
+    window.open(`${getEgdeskBasePath()}/api/quotation-cases/${id}/export-package`, '_blank');
   };
 
   const handleNavigateToCadDrawing = (target: any) => {
@@ -414,7 +415,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   const fetchData = async () => {
     try {
-      const res = await fetch(`/api/quotation-cases/${id}`);
+      const res = await apiFetch(`/api/quotation-cases/${id}`);
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -436,7 +437,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     fetchData();
-    fetch('/api/auth/me').then(res => res.json()).then(d => setUser(d.user)).catch(() => {});
+    apiFetch('/api/auth/me').then(res => res.json()).then(d => setUser(d.user)).catch(() => {});
   }, [id]);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -450,7 +451,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setUploading(true);
     try {
       // 1. Upload File to server storage
-      const uploadRes = await fetch(`/api/quotation-cases/${id}/upload`, {
+      const uploadRes = await apiFetch(`/api/quotation-cases/${id}/upload`, {
         method: 'POST',
         body: formData
       });
@@ -486,7 +487,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setAnalyzing(true);
     setAnalyzingFileId(fileId);
     try {
-      const analyzeRes = await fetch(`/api/quotation-cases/${id}/analyze`, {
+      const analyzeRes = await apiFetch(`/api/quotation-cases/${id}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileId })
@@ -516,7 +517,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     try {
       const cleanName = file.name.replace(/\.[^/.]+$/, "");
       const autoCaseName = `${cleanName} 견적의뢰 (DWG 자동분석)`;
-      const createRes = await fetch('/api/quotation-cases', {
+      const createRes = await apiFetch('/api/quotation-cases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -532,13 +533,13 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       // Upload file to new case and analyze
       const formData = new FormData();
       formData.append('file', file);
-      const newUploadRes = await fetch(`/api/quotation-cases/${newCaseId}/upload`, {
+      const newUploadRes = await apiFetch(`/api/quotation-cases/${newCaseId}/upload`, {
         method: 'POST',
         body: formData
       });
       const newUploadJson = await newUploadRes.json();
       if (newUploadRes.ok) {
-        await fetch(`/api/quotation-cases/${newCaseId}/analyze`, {
+        await apiFetch(`/api/quotation-cases/${newCaseId}/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileId: newUploadJson.file.id })
@@ -547,11 +548,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
       // Cleanup the temporary file uploaded to this case
       if (uploadJson?.file?.id) {
-        await fetch(`/api/quotation-cases/${id}/files/${uploadJson.file.id}`, { method: 'DELETE' }).catch(() => {});
+        await apiFetch(`/api/quotation-cases/${id}/files/${uploadJson.file.id}`, { method: 'DELETE' }).catch(() => {});
       }
 
       // Navigate to new case
-      window.location.href = `/cases/${newCaseId}`;
+      window.location.href = `${getEgdeskBasePath()}/cases/${newCaseId}`;
     } catch (err: any) {
       alert(err.message || '신규 견적건 분리 생성 실패');
       setUploading(false);
@@ -589,7 +590,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     const { uploadJson } = uploadIntentModal;
     setUploadIntentModal(null);
     if (uploadJson?.file?.id) {
-      await fetch(`/api/quotation-cases/${id}/files/${uploadJson.file.id}`, { method: 'DELETE' }).catch(() => {});
+      await apiFetch(`/api/quotation-cases/${id}/files/${uploadJson.file.id}`, { method: 'DELETE' }).catch(() => {});
       await fetchData();
     }
   };
@@ -614,7 +615,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setAnalyzing(true);
     setAnalyzingFileId(fileIdToUse);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/analyze`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileId: fileIdToUse })
@@ -665,7 +666,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     // 2. Perform background delete request
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/files/${fileId}`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/files/${fileId}`, {
         method: 'DELETE'
       });
       const resJson = await res.json();
@@ -692,7 +693,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (!targetNorm) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/approve-item`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/approve-item`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -724,7 +725,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (!confirm(confirmMsg)) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/bulk-approve`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/bulk-approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approveAll, onlyMatched: !approveAll })
@@ -732,7 +733,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
       if (res.ok) {
         if (approveAll) {
           // 일괄 승인 후 자동으로 124개 전체 품목 기준 새 견적서 생성 및 3단계로 이동
-          const qRes = await fetch(`/api/quotation-cases/${id}/create-quote`, {
+          const qRes = await apiFetch(`/api/quotation-cases/${id}/create-quote`, {
             method: 'POST'
           });
           if (qRes.ok) {
@@ -753,7 +754,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (actionLoading) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/unapprove-item`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/unapprove-item`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ normalizedItemId })
@@ -783,7 +784,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
 
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/bulk-unapprove`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/bulk-unapprove`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemIds: isSelectedOnly ? targetItemIds : undefined })
@@ -815,7 +816,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
         const cand = candidates.find((c: any) => c.normalized_item_id === itemId && c.rank === 1);
         const sug = norm.standard_schema_suggestion;
         const decisionType = cand ? 'EXISTING_MASTER' : (sug ? 'STANDARD_SCHEMA' : 'NEW_ITEM_CANDIDATE');
-        await fetch(`/api/quotation-cases/${id}/approve-item`, {
+        await apiFetch(`/api/quotation-cases/${id}/approve-item`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -860,7 +861,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const handleCreateQuote = async () => {
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/create-quote`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/create-quote`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -880,11 +881,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setActionLoading(true);
     try {
       // 1. Bulk approve AI 1st recommended master items
-      await fetch(`/api/quotation-cases/${id}/bulk-approve`, {
+      await apiFetch(`/api/quotation-cases/${id}/bulk-approve`, {
         method: 'POST'
       });
       // 2. Create quote with approved items
-      const res = await fetch(`/api/quotation-cases/${id}/create-quote`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/create-quote`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -938,7 +939,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     }
 
     try {
-      const res = await fetch(`/api/quote-items/${itemId}/price`, {
+      const res = await apiFetch(`/api/quote-items/${itemId}/price`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1012,7 +1013,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setAutoIncludeInQuote(true);
     setLoadingHistory(true);
     try {
-      const res = await fetch(`/api/manual-prices?name=${encodeURIComponent(item.item_name)}`);
+      const res = await apiFetch(`/api/manual-prices?name=${encodeURIComponent(item.item_name)}`);
       if (res.ok) {
         const json = await res.json();
         const manualList = json.manualPrices || json.list || [];
@@ -1113,7 +1114,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     });
 
     try {
-      const res = await fetch(`/api/quote-items/${currentModal.id}/price`, {
+      const res = await apiFetch(`/api/quote-items/${currentModal.id}/price`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1161,7 +1162,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const handleApproveQuote = async (quoteId: string) => {
     if (!confirm('이 견적서를 최종 승인하고 수정을 잠그시겠습니까?')) return;
     try {
-      const res = await fetch(`/api/quotes/${quoteId}/approve`, {
+      const res = await apiFetch(`/api/quotes/${quoteId}/approve`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -1179,7 +1180,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     if (actionLoading) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotes/${quoteId}/unlock`, { method: 'POST' });
+      const res = await apiFetch(`/api/quotes/${quoteId}/unlock`, { method: 'POST' });
       const json = await res.json();
       if (res.ok && json.success) {
         setData((prev: any) => {
@@ -1204,7 +1205,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
   const handleCloneVersion = async (quoteId: string) => {
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/quotes/${quoteId}/clone-version`, {
+      const res = await apiFetch(`/api/quotes/${quoteId}/clone-version`, {
         method: 'POST'
       });
       const data = await res.json();
@@ -1309,7 +1310,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     });
 
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ drawingNos, isIncluded, reason })
@@ -1401,7 +1402,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setSelectedApprovalIds(isIncluded ? (data?.normalizedItems || []).map((n: any) => n.id) : []);
 
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ all: true, isIncluded })
@@ -1480,7 +1481,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     });
 
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pricedOnly: true })
@@ -1542,7 +1543,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     });
 
     try {
-      const res = await fetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
+      const res = await apiFetch(`/api/quotation-cases/${id}/toggle-quote-drawing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ excludeDuplicates: true })
@@ -1560,7 +1561,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
     setActionLoading(true);
     setExportResult(null);
     try {
-      const res = await fetch(`/api/quotes/${quoteId}/export-excel`, {
+      const res = await apiFetch(`/api/quotes/${quoteId}/export-excel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: customOptions ? JSON.stringify(customOptions) : undefined
@@ -2131,7 +2132,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 <button
                   onClick={async () => {
                     if(!confirm('비공개 요청을 승인하시겠습니까?')) return;
-                    const res = await fetch(`/api/quotation-cases/${id}/visibility`, {
+                    const res = await apiFetch(`/api/quotation-cases/${id}/visibility`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'APPROVE' })
@@ -2145,7 +2146,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
                 <button
                   onClick={async () => {
                     if(!confirm('비공개 요청을 반려하시겠습니까?')) return;
-                    const res = await fetch(`/api/quotation-cases/${id}/visibility`, {
+                    const res = await apiFetch(`/api/quotation-cases/${id}/visibility`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'REJECT' })
@@ -4974,7 +4975,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ id: st
               </button>
               <button
                 onClick={async () => {
-                  const res = await fetch(`/api/quotation-cases/${id}/visibility`, {
+                  const res = await apiFetch(`/api/quotation-cases/${id}/visibility`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'REQUEST_PRIVATE', reason: privacyReason })

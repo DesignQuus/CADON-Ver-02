@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { ZoomIn, ZoomOut, RotateCcw, Sparkles, RefreshCw, Layers, Scan, CheckCircle2, Crosshair, FileText, ExternalLink, AlertTriangle, X, Check, Info, ShieldCheck, ChevronRight } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface WebGlCadViewerProps {
   caseId: string;
@@ -455,7 +456,7 @@ export default function WebGlCadViewer({
       const url = fetchId
         ? `/api/quotation-cases/${caseId}/webgl-binary?fileId=${encodeURIComponent(fetchId)}&v=${Date.now()}`
         : `/api/quotation-cases/${caseId}/webgl-binary?v=${Date.now()}`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (!res.ok) {
         if (res.status === 404 && retryAttempt < 5) {
           // Auto retry up to 5 times with 2.0s delay for in-flight exporter/converter
@@ -577,7 +578,7 @@ export default function WebGlCadViewer({
       const url = fetchId
         ? `/api/quotation-cases/${caseId}/webgl-texts?fileId=${encodeURIComponent(fetchId)}&v=${Date.now()}`
         : `/api/quotation-cases/${caseId}/webgl-texts?v=${Date.now()}`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (currentFileIdRef.current !== fetchId) return;
       if (res.ok) {
         const data = await res.json();
@@ -602,7 +603,7 @@ export default function WebGlCadViewer({
       const url = fetchId
         ? `/api/quotation-cases/${caseId}/webgl-rasters?fileId=${encodeURIComponent(fetchId)}&v=${Date.now()}`
         : `/api/quotation-cases/${caseId}/webgl-rasters?v=${Date.now()}`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (currentFileIdRef.current !== fetchId) return;
       if (!res.ok) {
         setRasterCount(0);
@@ -657,7 +658,7 @@ export default function WebGlCadViewer({
     if (!caseId || ocrLoading) return;
     setOcrLoading(true);
     try {
-      const res = await fetch(`/api/quotation-cases/${caseId}/ocr`, {
+      const res = await apiFetch(`/api/quotation-cases/${caseId}/ocr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -694,7 +695,7 @@ export default function WebGlCadViewer({
   const fetchVirtualBom = useCallback(async () => {
     if (!caseId) return;
     try {
-      const res = await fetch(`/api/quotation-cases/${caseId}/virtual-bom`);
+      const res = await apiFetch(`/api/quotation-cases/${caseId}/virtual-bom`);
       if (res.ok) {
         const d = await res.json();
         setVirtualBomData(d);
@@ -719,7 +720,7 @@ export default function WebGlCadViewer({
         setApplyingVirtualBom(false);
         return;
       }
-      const res = await fetch(`/api/quotation-cases/${caseId}/virtual-bom`, {
+      const res = await apiFetch(`/api/quotation-cases/${caseId}/virtual-bom`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
