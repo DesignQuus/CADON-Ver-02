@@ -27,15 +27,23 @@ export async function GET(
     const dwgFile = db.prepare("SELECT * FROM uploaded_files WHERE quotation_case_id = ? AND file_type = 'DWG' ORDER BY created_at DESC LIMIT 1").get(id) as any;
     const dxfFile = db.prepare("SELECT * FROM uploaded_files WHERE quotation_case_id = ? AND file_type = 'DXF' ORDER BY created_at DESC LIMIT 1").get(id) as any;
 
+    const meta = db.prepare(`
+      SELECT p.project_name, c.company_name
+      FROM quotation_cases qc
+      JOIN projects p ON p.id = qc.project_id
+      JOIN companies c ON c.id = qc.company_id
+      WHERE qc.id = ?
+    `).get(id) as { project_name?: string; company_name?: string } | undefined;
+
     const manifest = {
       case_info: {
         case_id: qc.id,
         case_no: qc.case_no,
         case_name: qc.case_name,
-        project_name: '인버터 조립 LINE',
-        customer: 'A&G/보그워너',
-        designer: '이경중',
-        design_date: '24.03.15'
+        project_name: meta?.project_name ?? '-',
+        customer: meta?.company_name ?? '-',
+        designer: '-',
+        design_date: '-'
       },
       dwg_path: dwgFile ? resolveStoragePath(dwgFile.storage_path) : null,
       dxf_path: dxfFile ? resolveStoragePath(dxfFile.storage_path) : null,

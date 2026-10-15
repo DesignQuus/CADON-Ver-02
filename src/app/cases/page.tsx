@@ -60,65 +60,23 @@ interface ManagerTheme {
   initial: string;
 }
 
-const MANAGER_THEMES: Record<string, ManagerTheme> = {
-  usr_kim: {
-    bg: 'bg-blue-50',
-    text: 'text-blue-700',
-    border: 'border-blue-200',
-    badge: 'bg-blue-600 text-white',
-    dept: '영업1팀',
-    initial: '김'
-  },
-  usr_lee: {
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    border: 'border-emerald-200',
-    badge: 'bg-emerald-600 text-white',
-    dept: '영업1팀',
-    initial: '이'
-  },
-  usr_choi: {
-    bg: 'bg-purple-50',
-    text: 'text-purple-700',
-    border: 'border-purple-200',
-    badge: 'bg-purple-600 text-white',
-    dept: '기술2팀',
-    initial: '최'
-  },
-  usr_song: {
-    bg: 'bg-rose-50',
-    text: 'text-rose-700',
-    border: 'border-rose-200',
-    badge: 'bg-rose-600 text-white',
-    dept: '기술2팀',
-    initial: '송'
-  },
-  usr_park: {
-    bg: 'bg-amber-50',
-    text: 'text-amber-800',
-    border: 'border-amber-200',
-    badge: 'bg-amber-600 text-white',
-    dept: '정밀3팀',
-    initial: '박'
-  },
-  usr_admin: {
-    bg: 'bg-slate-100',
-    text: 'text-slate-800',
-    border: 'border-slate-300',
-    badge: 'bg-slate-700 text-white',
-    dept: '운영총괄',
-    initial: '관'
-  }
-};
+const MANAGER_PALETTE = [
+  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', badge: 'bg-blue-600 text-white' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-600 text-white' },
+  { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', badge: 'bg-purple-600 text-white' },
+  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', badge: 'bg-rose-600 text-white' },
+  { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200', badge: 'bg-amber-600 text-white' },
+  { bg: 'bg-slate-100', text: 'text-slate-800', border: 'border-slate-300', badge: 'bg-slate-700 text-white' },
+];
 
-function getManagerTheme(userId: string): ManagerTheme {
-  return MANAGER_THEMES[userId] || {
-    bg: 'bg-slate-50',
-    text: 'text-slate-700',
-    border: 'border-slate-200',
-    badge: 'bg-slate-500 text-white',
+// 담당자 ID 로 색상을 고정(해시)하고, 이니셜은 이름 첫 글자를 쓴다.
+function getManagerTheme(userId: string, name?: string | null): ManagerTheme {
+  let hash = 0;
+  for (const ch of userId) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return {
+    ...MANAGER_PALETTE[hash % MANAGER_PALETTE.length],
     dept: '견적팀',
-    initial: '👤'
+    initial: name?.trim().charAt(0) || '👤'
   };
 }
 
@@ -158,8 +116,12 @@ export default function CasesPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [caseName, setCaseName] = useState('');
-  const [companyId, setCompanyId] = useState('comp_sechang');
-  const [projectId, setProjectId] = useState('proj_sechang');
+  const [companyId, setCompanyId] = useState('comp_unassigned');
+  const [projectId, setProjectId] = useState('proj_unassigned');
+  const [companyOptions, setCompanyOptions] = useState<
+    { id: string; company_name: string; company_code: string; projects: { id: string; project_name: string }[] }[]
+  >([]);
+  const projectOptions = companyOptions.find((c) => c.id === companyId)?.projects ?? [];
   const [submitting, setSubmitting] = useState(false);
 
   // Filter & Search States
@@ -189,6 +151,14 @@ export default function CasesPage() {
   const [quickUploadStatus, setQuickUploadStatus] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!showModal) return;
+    apiFetch('/api/companies')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => { if (json?.companies) setCompanyOptions(json.companies); })
+      .catch(() => {});
+  }, [showModal]);
 
   const fetchCases = async () => {
     try {
@@ -433,6 +403,7 @@ export default function CasesPage() {
 
   const handleManualCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!companyId || !projectId) return;
     setSubmitting(true);
     try {
       const res = await apiFetch('/api/quotation-cases', {
@@ -987,7 +958,7 @@ export default function CasesPage() {
           {uniqueManagers
             .filter((m) => !user || user.role === 'SUPER_ADMIN' || m.id !== user.userId)
             .map((m) => {
-            const theme = getManagerTheme(m.id);
+            const theme = getManagerTheme(m.id, m.name);
             const isSelected = filterManager === m.id;
             const count = managerCaseCounts[m.id] || 0;
 
@@ -1318,7 +1289,7 @@ export default function CasesPage() {
                           {/* Quote Manager Badge (독립 전용 열 & 1-클릭 필터) */}
                           <td className="py-3 px-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             {(() => {
-                              const theme = getManagerTheme(c.created_by_user_id);
+                              const theme = getManagerTheme(c.created_by_user_id, c.created_by_name);
                               const isFiltered = filterManager === c.created_by_user_id;
                               return (
                                 <button
@@ -1559,7 +1530,7 @@ export default function CasesPage() {
                           <div className="flex items-center justify-between text-slate-600 font-medium pt-1.5 border-t border-slate-100/80">
                             <span className="text-slate-400 text-[11px] font-bold">견적 담당자</span>
                             {(() => {
-                              const theme = getManagerTheme(c.created_by_user_id);
+                              const theme = getManagerTheme(c.created_by_user_id, c.created_by_name);
                               return (
                                 <span className={`inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-[3px] border ${theme.bg} ${theme.text} ${theme.border} text-xs font-bold`}>
                                   <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black ${theme.badge} shrink-0`}>
@@ -1763,14 +1734,16 @@ export default function CasesPage() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">고객사 선택</label>
                 <select
                   value={companyId}
-                  onChange={(e) => setCompanyId(e.target.value)}
+                  onChange={(e) => {
+                    const next = companyOptions.find((c) => c.id === e.target.value);
+                    setCompanyId(e.target.value);
+                    setProjectId(next?.projects[0]?.id ?? '');
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-[3px] text-xs font-semibold text-slate-800 outline-none focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 >
-                  <option value="comp_sechang">(주)세창인터내셔널 [CUST-SECHANG]</option>
-                  <option value="comp_001">A기계공업 (주) [CUST-0001]</option>
-                  <option value="comp_002">B자동화시스템 (주) [CUST-0002]</option>
-                  <option value="comp_003">(주)한화에어로스페이스 파트너스 [CUST-0003]</option>
-                  <option value="comp_004">현대모비스 구동모듈 협력단 [CUST-0004]</option>
+                  {companyOptions.map((c) => (
+                    <option key={c.id} value={c.id}>{c.company_name} [{c.company_code}]</option>
+                  ))}
                 </select>
               </div>
 
@@ -1781,12 +1754,9 @@ export default function CasesPage() {
                   onChange={(e) => setProjectId(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-[3px] text-xs font-semibold text-slate-800 outline-none focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 >
-                  <option value="proj_sechang">인버터 조립 LINE 신규라인 (보그워너)</option>
-                  <option value="proj_001">2026 고속 가이드레일 및 프레임 증설라인</option>
-                  <option value="proj_002">스마트 컨베이어 이송 자동화 시스템</option>
-                  <option value="proj_003">2차전지 모듈 조립 라인 지그/프레임 제작</option>
-                  <option value="proj_004">항공 정밀 가공 지그 및 툴링 파트</option>
-                  <option value="proj_005">구동모터 브라켓 및 샤프트 시제품 제작</option>
+                  {projectOptions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.project_name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -1812,7 +1782,7 @@ export default function CasesPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !projectId}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-[3px] shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? '등록 중...' : '견적의뢰 등록'}

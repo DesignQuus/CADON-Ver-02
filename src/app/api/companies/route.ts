@@ -15,7 +15,19 @@ export async function GET(req: NextRequest) {
     ORDER BY company_name ASC
   `).all();
 
-  return NextResponse.json({ companies });
+  const projects = db.prepare(`
+    SELECT id, company_id, project_name
+    FROM projects
+    WHERE status = 'ACTIVE'
+    ORDER BY project_name ASC
+  `).all() as { id: string; company_id: string; project_name: string }[];
+
+  const withProjects = (companies as any[]).map((c) => ({
+    ...c,
+    projects: projects.filter((p) => p.company_id === c.id).map(({ id, project_name }) => ({ id, project_name })),
+  }));
+
+  return NextResponse.json({ companies: withProjects });
 }
 
 export async function POST(req: NextRequest) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { resolveStoragePath, getStorageSubdir } from '@/lib/storage';
+import { resolveStoragePath, getStorageSubdir, getEgdeskDerivedDir } from '@/lib/storage';
 import fs from 'fs';
 import path from 'path';
 
@@ -100,10 +100,7 @@ export async function DELETE(
       // Clean up physical derived files from disk
       const derivedDir = getStorageSubdir('derived');
       const localDerived = path.join(process.cwd(), 'storage', 'derived');
-      const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
-      const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
-      const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
-      const egdeskDerived = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'storage', 'derived');
+      const egdeskDerived = getEgdeskDerivedDir();
 
       const derivedFilesToWipe = [
         `${id}__cad_webgl.bin`,

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { getEgdeskProjectDir } from './paths';
 
 export function resolveDatabasePath(): string {
   // 1. Explicit override via env
@@ -9,14 +10,11 @@ export function resolveDatabasePath(): string {
     return process.env.EGDESK_USER_DATA_DB_PATH;
   }
 
-  // 2. EGDesk project user_data.db in APPDATA
-  const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '5883d2d5-7b0a-4947-a4fa-1f702c1dbc2f';
-  const envName = process.env.NEXT_PUBLIC_EGDESK_ENV || 'development';
-  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\SteveLee', 'AppData', 'Roaming');
-  
-  const egdeskDbPath = path.join(appData, 'egdesk', 'user-data', envName, 'projects', projectId, 'user_data.db');
-  if (fs.existsSync(egdeskDbPath)) {
-    return egdeskDbPath;
+  // 2. EGDesk project user_data.db
+  const projectDir = getEgdeskProjectDir();
+  if (projectDir) {
+    const egdeskDbPath = path.join(projectDir, 'user_data.db');
+    if (fs.existsSync(egdeskDbPath)) return egdeskDbPath;
   }
 
   // 3. Fallback to local storage/cadon_bom.db
@@ -640,72 +638,81 @@ export function initializeDatabase() {
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_mpp_name ON manual_price_pool(item_name);'); } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_mpp_company ON manual_price_pool(company_id);'); } catch {}
 
-  // Ensure 5 demo users (김견적, 이견적, 최견적, 송견적, 박견적) and admin are registered
   const now = new Date().toISOString();
-  const defaultPassHash = bcrypt.hashSync('Cadon1234!@', 10);
-  const adminPassHash = bcrypt.hashSync('Cadon1234!@', 10);
 
-  const demoUsers = [
-    { id: 'usr_kim', login_id: 'kim', name: '김견적 과장', role: 'SALES_USER' },
-    { id: 'usr_lee', login_id: 'lee', name: '이견적 대리', role: 'SALES_USER' },
-    { id: 'usr_choi', login_id: 'choi', name: '최견적 차장', role: 'SALES_USER' },
-    { id: 'usr_song', login_id: 'song', name: '송견적 주임', role: 'SALES_USER' },
-    { id: 'usr_park', login_id: 'park', name: '박견적 대리', role: 'SALES_USER' },
-  ];
+  // 데모 데이터(계정/고객사/품목/단가)는 개발 환경에서 SEED_DEMO_DATA=1 일 때만 생성한다.
+  const seedDemo = process.env.SEED_DEMO_DATA === '1' && process.env.NODE_ENV !== 'production';
+  if (process.env.SEED_DEMO_DATA === '1' && !seedDemo) {
+    console.warn('[db] 운영 환경에서는 SEED_DEMO_DATA 를 무시합니다.');
+  }
 
-  for (const u of demoUsers) {
-    db.prepare(`
-      INSERT INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        password_hash = excluded.password_hash,
-        role = excluded.role,
-        is_active = 1
-    `).run(u.id, u.login_id, defaultPassHash, u.name, u.role, now, now);
+  // 시스템 기본 레코드: 도면 업로드 직후 고객사가 확정되기 전에 쓰는 '미지정' 고객사/프로젝트
+  db.prepare(`
+    INSERT OR IGNORE INTO companies (id, company_code, company_name, company_type, is_active, created_at, updated_at)
+    VALUES ('comp_unassigned', 'UNASSIGNED', '고객사 미지정', 'CUSTOMER', 1, ?, ?)
+  `).run(now, now);
+  db.prepare(`
+    INSERT OR IGNORE INTO projects (id, company_id, project_code, project_name, status, created_at, updated_at)
+    VALUES ('proj_unassigned', 'comp_unassigned', 'PRJ-UNASSIGNED', '프로젝트 미정', 'ACTIVE', ?, ?)
+  `).run(now, now);
 
-    // Grant company access to all existing customer companies
-    const activeCompanies = db.prepare('SELECT id FROM companies WHERE is_active = 1').all() as any[];
-    for (const comp of activeCompanies) {
+  // 초기 관리자: SUPER_ADMIN 이 하나도 없을 때만, 환경변수 비밀번호로 1회 생성한다. 기존 계정은 건드리지 않는다.
+  const hasSuperAdmin = db.prepare(`SELECT 1 FROM users WHERE role = 'SUPER_ADMIN' LIMIT 1`).get();
+  if (!hasSuperAdmin) {
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD;
+    if (initialPassword) {
+      const adminLoginId = process.env.ADMIN_LOGIN_ID || 'admin';
       db.prepare(`
-        INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
-        VALUES (?, ?, 'MANAGER', 1)
-      `).run(u.id, comp.id);
+        INSERT OR IGNORE INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
+        VALUES ('usr_admin', ?, ?, '시스템 최고관리자', 'SUPER_ADMIN', 1, ?, ?)
+      `).run(adminLoginId, bcrypt.hashSync(initialPassword, 10), now, now);
+      console.log(`[db] 초기 관리자 계정(${adminLoginId})을 생성했습니다. 로그인 후 비밀번호를 변경하세요.`);
+    } else {
+      console.warn('[db] SUPER_ADMIN 계정이 없습니다. ADMIN_INITIAL_PASSWORD 를 설정하고 서버를 다시 시작하세요.');
     }
   }
 
-  // Admin user
-  db.prepare(`
-    INSERT INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      name = excluded.name,
-      password_hash = excluded.password_hash,
-      role = excluded.role,
-      is_active = 1
-  `).run('usr_admin', 'admin', adminPassHash, '시스템 최고관리자', 'SUPER_ADMIN', now, now);
-
-  const activeCompaniesForAdmin = db.prepare('SELECT id FROM companies WHERE is_active = 1').all() as any[];
-  for (const comp of activeCompaniesForAdmin) {
-    db.prepare(`
-      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
-      VALUES ('usr_admin', ?, 'MANAGER', 1)
-    `).run(comp.id);
+  // 데모 계정 (개발용): 비밀번호는 SEED_DEMO_PASSWORD 로만 받고, 이미 있는 계정은 덮어쓰지 않는다.
+  const demoPassword = process.env.SEED_DEMO_PASSWORD;
+  if (seedDemo && !demoPassword) {
+    console.warn('[db] SEED_DEMO_PASSWORD 가 없어 데모 계정은 만들지 않습니다.');
   }
+  if (seedDemo && demoPassword) {
+    const demoPassHash = bcrypt.hashSync(demoPassword, 10);
+    const demoUsers = [
+      { id: 'usr_kim', login_id: 'kim', name: '김견적 과장', role: 'SALES_USER' },
+      { id: 'usr_lee', login_id: 'lee', name: '이견적 대리', role: 'SALES_USER' },
+      { id: 'usr_choi', login_id: 'choi', name: '최견적 차장', role: 'SALES_USER' },
+      { id: 'usr_song', login_id: 'song', name: '송견적 주임', role: 'SALES_USER' },
+      { id: 'usr_park', login_id: 'park', name: '박견적 대리', role: 'SALES_USER' },
+    ];
+    for (const u of demoUsers) {
+      db.prepare(`
+        INSERT OR IGNORE INTO users (id, login_id, password_hash, name, role, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      `).run(u.id, u.login_id, demoPassHash, u.name, u.role, now, now);
+    }
+  }
+
+  // 모든 사용자가 '미지정' 고객사 건을 다룰 수 있도록 접근 권한을 부여한다.
+  db.prepare(`
+    INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
+    SELECT id, 'comp_unassigned', 'MANAGER', 1 FROM users
+  `).run();
 
   // Seed Global Approval Settings
   db.prepare(`
     INSERT INTO system_approval_settings (
       id, cross_user_edit_policy, cross_user_approve_policy,
       require_admin_final_quote_approval, approval_valid_hours, updated_by_user_id, updated_at
-    ) VALUES ('GLOBAL_CONFIG', 'REQUIRE_APPROVAL', 'REQUIRE_APPROVAL', 0, 48, 'usr_admin', ?)
+    ) VALUES ('GLOBAL_CONFIG', 'REQUIRE_APPROVAL', 'REQUIRE_APPROVAL', 0, 48, NULL, ?)
     ON CONFLICT(id) DO NOTHING
   `).run(now);
 
-  // Seed default permissions for 5 managers + admin
-  const allUsers = [...demoUsers, { id: 'usr_admin', name: '시스템 최고관리자' }];
+  // 모든 사용자에게 기본 승인 권한 행을 보장한다 (이미 있으면 유지)
+  const allUsers = db.prepare('SELECT id, role FROM users').all() as { id: string; role: string }[];
   for (const u of allUsers) {
-    const isSuperAdmin = u.id === 'usr_admin';
+    const isSuperAdmin = u.role === 'SUPER_ADMIN';
     db.prepare(`
       INSERT INTO user_approval_permissions (
         user_id, can_edit_own, can_approve_own, can_edit_others, can_approve_others, can_edit_price, can_approve_quote, updated_at
@@ -719,9 +726,9 @@ export function initializeDatabase() {
     );
   }
 
-  // Seed default data if companies table is empty
-  const companyCount = db.prepare('SELECT COUNT(*) as cnt FROM companies').get() as { cnt: number };
-  if (companyCount.cnt === 0) {
+  // 데모 데이터: 개발 환경 + SEED_DEMO_DATA=1 + 고객사가 하나도 없을 때만
+  const companyCount = db.prepare("SELECT COUNT(*) as cnt FROM companies WHERE id != 'comp_unassigned'").get() as { cnt: number };
+  if (seedDemo && companyCount.cnt === 0) {
 
     // Seed Companies
     db.prepare(`
@@ -739,11 +746,11 @@ export function initializeDatabase() {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run('comp_002', 'CUST-0002', 'B자동화시스템 (주)', 'CUSTOMER', 1, now, now);
 
-    // Access
+    // Access: 모든 사용자에게 데모 고객사 접근 권한 부여
     db.prepare(`
-      INSERT INTO user_company_access (user_id, company_id, access_role, is_active)
-      VALUES (?, ?, ?, ?)
-    `).run('usr_sales1', 'comp_001', 'MANAGER', 1);
+      INSERT OR IGNORE INTO user_company_access (user_id, company_id, access_role, is_active)
+      SELECT u.id, c.id, 'MANAGER', 1 FROM users u CROSS JOIN companies c WHERE c.is_active = 1
+    `).run();
 
     // Projects
     db.prepare(`
@@ -755,7 +762,7 @@ export function initializeDatabase() {
     db.prepare(`
       INSERT INTO quotation_cases (id, case_no, company_id, project_id, case_name, request_date, status, revision, quote_readiness, created_by_user_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('case_001', 'QT-20260901-001', 'comp_001', 'proj_001', 'A기계 고속라인 가이드레일/모터베이스 제작 견적의뢰', '2026-09-01', 'DRAFT', '0', 'NOT_READY', 'usr_sales1', now, now);
+    `).run('case_001', 'QT-20260901-001', 'comp_001', 'proj_001', 'A기계 고속라인 가이드레일/모터베이스 제작 견적의뢰', '2026-09-01', 'DRAFT', '0', 'NOT_READY', 'usr_kim', now, now);
 
     // Standard Product Masters
     const masters = [
@@ -803,9 +810,9 @@ export function initializeDatabase() {
     `).run('gcase_001', 'proj_001', 'case_001', 'GOLDEN-DXF-001', 'A기계 표준 도면 정답 세트 (DEMO FREEZE)', '인간 검증 완료된 5개 부품 및 1개 조립도 정답 세트', 'TEST_EVIDENCE', 1, 1, 5, 'usr_admin', now);
   }
 
-  // Seed Manual Price Pool (방안 A: 수기 단가 누적 풀)
+  // Seed Manual Price Pool (방안 A: 수기 단가 누적 풀) - 데모 전용
   const mppCount = (db.prepare('SELECT COUNT(*) as count FROM manual_price_pool').get() as any)?.count || 0;
-  if (mppCount === 0) {
+  if (seedDemo && mppCount === 0) {
     const now = new Date().toISOString();
     const initialManualPrices = [
       { id: 'mpp_001', name: 'GUIDE RAIL ASSY', spec: '1200L', mat: 'AL6063', price: 115000, remark: '외주 압출/가공 협의 단가' },
@@ -818,7 +825,7 @@ export function initializeDatabase() {
     ];
 
     const defaultCase = db.prepare('SELECT id FROM quotation_cases LIMIT 1').get() as any;
-    const targetCaseId = defaultCase?.id || 'case_1788656891118';
+    const targetCaseId = defaultCase?.id || null;
 
     for (const mpp of initialManualPrices) {
       db.prepare(`
